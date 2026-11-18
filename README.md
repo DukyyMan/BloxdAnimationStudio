@@ -4,7 +4,7 @@ A small, local 3D animation editor with an editable **8-second Maple clearing**.
 
 ## 🌐 Live website
 
-**Play it in your browser (free, hosted on GitHub Pages): <https://epicoo00000.github.io/Bloxd-anim-studio/>**
+**Play it in your browser (free, hosted on GitHub Pages): <https://dukyyman.github.io/BloxdAnimationStudio/>**
 
 The site is hosted **free on GitHub Pages**, served directly from the `main` branch: the repository root *is* the website (`index.html` + `lib/` + `vendor/` + `assets/`). Every push to `main` republishes it automatically.
 
