@@ -8,6 +8,8 @@ const js=result.outputFiles[0].text.replace(/<\/script/gi,'<\\/script');
 let html=await readFile(path.join(root,'index.html'),'utf8');
 const css=await readFile(path.join(root,'style.css'),'utf8');
 const notices=await Promise.all(['LICENSE-three.txt','LICENSE-fix-webm-duration.txt','LICENSE-lamejs.txt','LGPL-3.0.txt','GPL-3.0.txt','COPYING-LAME-legacy.txt','LICENSE-mediabunny.txt','LICENSE-fflate.txt'].map(n=>readFile(path.join(root,'vendor',n),'utf8')));
+notices.push(await readFile(path.join(root,'tools/script/LICENSE'),'utf8'));
+notices.push(await readFile(path.join(root,'tools/script/LICENSE-acorn'),'utf8'));
 // Function replacements are essential: minified JS can contain literal $& / $` / $'.
 // A replacement string would expand them into the matched HTML and corrupt the bundle.
 html=html.replace('</head>',()=>'<!-- Third-party notices\n'+notices.join('\n\n')+'\n-->\n</head>');

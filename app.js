@@ -24,6 +24,7 @@ import { buildTimeline, timelineAt, fitRect, sanitizeTrim, MAX_ASSEMBLY_SECONDS 
 import { Soundtrack } from './lib/audio.js';
 import { plainState, stageEdit, mergeEdit, keyFromState, stateFromKey, validateDraft } from './lib/key-edit.js';
 import { initGeminiPanel } from './lib/ai-panel.js';
+import { initCodeStudio } from './lib/code-studio.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const clone=v=>JSON.parse(JSON.stringify(v));
@@ -59,6 +60,10 @@ async function main(){
     day:{az:25,el:65,power:3.1,fill:1.7,color:'#fffaf0',sky:'#c2dce8'},
     night:{az:-65,el:38,power:.95,fill:.38,color:'#9bbaff',sky:'#263947'},
     studio:{az:-25,el:52,power:2.8,fill:1.85,color:'#ffffff',sky:'#d1d4cb'},
+    sunrise:{az:75,el:12,power:2.4,fill:1.05,color:'#ffc890',sky:'#d6b9bd'},
+    sunset:{az:-100,el:10,power:2.5,fill:.9,color:'#ffad78',sky:'#b98f9c'},
+    moonlight:{az:-65,el:38,power:.7,fill:.32,color:'#a8c3ff',sky:'#202f48'},
+    cinematic:{az:-48,el:28,power:2.6,fill:.7,color:'#ffddb2',sky:'#879eab'},
   };
   const floor=new THREE.Mesh(new THREE.PlaneGeometry(1250,1250),new THREE.MeshStandardMaterial({color:0xabb9a9,roughness:1}));floor.rotation.x=-Math.PI/2;floor.position.y=-3.04;floor.receiveShadow=true;scene.add(floor);
   const world=new VoxelWorld().generate();scene.add(world.group);
@@ -1601,7 +1606,7 @@ async function main(){
     if(data.type==='character'){
       const cdata=data.character||{},c=createCharacter(String(data.name).slice(0,60));
       if(cdata.skin){if(!String(cdata.skin).startsWith('data:image/'))throw new Error('Only embedded skin images are supported.');c.material.map=pixelTexture(await new THREE.TextureLoader().loadAsync(cdata.skin));c.skinData=cdata.skin;}
-      c.pose=copyPose(cdata.pose||neutralPose());c.keys=clone(cdata.keys||[]);c.preset=cdata.preset||'idle';c.live=!!cdata.live;applyPose(c,c.pose);equip(c,toolNames.includes(cdata.tool)?cdata.tool:'none');setHeld(c,cdata.held);wearArmor(c,cdata.armor);r=register(c.root,'character',String(data.name).slice(0,60),{character:c});
+      c.pose=copyPose(cdata.pose||neutralPose());c.keys=clone(cdata.keys||[]);c.preset=cdata.preset||'idle';c.live=!!cdata.live;applyPose(c,c.pose);equip(c,toolNames.includes(cdata.tool)?cdata.tool:'none');setHeld(c,cdata.held);wearArmor(c,cdata.armor);r=register(c.root,'character',String(data.name).slice(0,60),{character:c,options:clone(data.options||{})});
     }else if(data.type==='import'||data.type==='voxel'||data.type==='image'){
       for(const image of data.object?.images||[]){const urls=Array.isArray(image.url)?image.url:[image.url];if(urls.some(u=>typeof u==='string'&&!u.startsWith('data:')))throw new Error('Projects must embed their textures, not link to external files.');}
       const root=await new THREE.ObjectLoader().parseAsync(data.object);r=register(root,data.type,String(data.name).slice(0,60),{animations:root.animations||[]});
@@ -2063,6 +2068,8 @@ async function main(){
     serializeRecord,handleFiles,undo,redo,frameScene,focusObject,refreshAll,editBlock,cellFromHit,history,cleanRender,actorSnapshot,restoreActor,makeTool,toolTextureName,setToolLighting,applyObjectKey,applyPendingEdits,revertEdit,keysOf,poseState,
     zone:{get from(){return zone.from;},get to(){return zone.to;},get cells(){return zone.cells;},get plan(){return zone.plan;},get config(){return zoneCfg;},select:zoneSelect,clear:zoneClear,refresh:zoneRefreshUI},
     cinematicBuild,MAX_ZONE_BLOCKS};
+  const codeBridge={catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS)},snapshot:captureAIScene,apply:applyAIPlan,prepare:()=>{if(recording){toast('Stop recording first.');return false;}finishInputEdit();setPlaying(false);return true;}};
+  window.STUDIO.code=initCodeStudio(codeBridge);
   window.STUDIO.ai=initGeminiPanel({
     catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS)},
     snapshot:captureAIScene,apply:applyAIPlan,canUndo:entry=>history.at(-1)===entry,undo,
