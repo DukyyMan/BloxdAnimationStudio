@@ -115,7 +115,7 @@ The machine-readable schema is `gemini-command-schema.json`. The planner instruc
 
 **Held item:** `{"held":{"position":[0,0,0],"rotation":[0,0,90],"scale":[1,1,1]}}`. Equip an item before keying it. Held transforms are local to the hand mount.
 
-**Lighting presets:** `day`, `golden`, `night`, `studio`. Azimuth −180…180; elevation 5…90; intensity 0…6; ambient 0…3; colors `#RRGGBB`. Lighting edits are global/static, not animated light tracks.
+**Lighting presets:** `day`, `golden`, `sunrise`, `sunset`, `night`, `moonlight`, `cinematic`, `studio`. Azimuth −180…180; elevation 5…90; intensity 0…6; ambient 0…3; colors `#RRGGBB`. Lighting edits are global/static, not animated light tracks.
 
 **Key semantics:** `animate` replaces that track unless `replace:false` is supplied. `motion` replaces keys only inside its interval; successive intervals can chain walking, mining and waving. First-late-key protection adds a starting key when needed. Rotation now defaults to the shortest quaternion path, independent of angle winding. For an intentional spin, use `"rotationMode":"spins"` on `animate` or `motion`; then 0° → 720° produces two full turns. `"rotationMode":"shortest"` restores direct motion. This is a per-object/whole-player track setting, and appears in the scene summary.
 

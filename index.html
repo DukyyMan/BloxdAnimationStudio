@@ -185,7 +185,7 @@
       <section id="inspect-light" class="inspector-section" hidden>
         <div class="inspector-intro"><span class="eyebrow">LIGHTING</span><h2>Set the mood.</h2><p>Real-time light. Real-time shadows.</p></div>
         <div id="sun-pad" title="Drag to change sun direction"><div class="sun-orbit"></div><div id="sun-handle"><svg><use href="#i-sun"/></svg></div><span>DRAG TO MOVE THE SUN</span><b class="sun-w">W</b><b class="sun-e">E</b></div>
-        <div class="preset-grid light-presets"><button data-light="day">Daylight</button><button data-light="golden" class="active">Golden</button><button data-light="night">Moonlight</button><button data-light="studio">Studio</button></div>
+        <div class="preset-grid light-presets"><button data-light="day">Daylight</button><button data-light="golden" class="active">Golden</button><button data-light="sunrise">Sunrise</button><button data-light="sunset">Sunset</button><button data-light="night">Night</button><button data-light="moonlight">Moonlight</button><button data-light="cinematic">Cinematic</button><button data-light="studio">Studio</button></div>
         <div class="section-title">Direction</div>
         <label class="range-label" for="sun-az">Azimuth<output id="sun-az-value">−38°</output></label><input id="sun-az" type="range" min="-180" max="180" step="1" value="-38">
         <label class="range-label" for="sun-el">Elevation<output id="sun-el-value">42°</output></label><input id="sun-el" type="range" min="5" max="90" step="1" value="42">
@@ -234,6 +234,7 @@
   <button class="dock-btn" data-panel="timeline" title="Timeline & playback"><svg><use href="#i-play"/></svg></button>
   <button class="dock-btn" id="open-project-menu" title="Project: open, save, clean view"><svg><use href="#i-folder"/></svg></button>
   <button class="dock-btn" id="open-export" title="Export PNG, video or MP3"><svg><use href="#i-camera"/></svg></button>
+  <button class="dock-btn" id="open-code" title="Code Editor" aria-label="Code Editor"><b>&lt;/&gt;</b></button>
   <button class="dock-btn ai" id="open-ai" title="Generate editable animations with your Gemini key"><svg><use href="#i-sparkles"/></svg></button>
   <button class="dock-btn" id="help-btn" title="Quick guide & credits"><svg><use href="#i-help"/></svg></button>
 </nav>
@@ -273,6 +274,20 @@
 <div class="audio-preview-row"><button id="preview-sound">▶ Preview sound</button><button id="stop-sound">Stop sound</button><label><input id="preview-audio" type="checkbox">Sound on timeline</label></div>
 </div><div class="checks"><label><input id="record-audio" type="checkbox" checked>Include sound in video</label><span>Entire timeline · loops rendered once</span></div>
 <p id="sandbox-note" class="sandbox-note" hidden>This embedded preview may block downloads even after a video is rendered. Use the live app in its own tab, or open the downloaded HTML in Chrome / Edge. A preview is kept here; no automatic download is assumed.</p><p id="record-state" class="muted">Ready to render. After processing, use the Download video button. MP3 is a separate audio-only export.</p></dialog>
+<dialog id="code-dialog" class="code-dialog"><div class="dialog-head"><span class="eyebrow">CODE EDITOR · LOCAL</span><button class="icon-btn dialog-close" title="Close">×</button></div>
+<h2>Build with code.</h2><p class="muted">A supported subset of the previous Studio API. Validate before applying; generated objects and keys are editable in the scene. Existing keys at the same time are preserved.</p>
+<textarea id="code-source" spellcheck="false" aria-label="Animation code"></textarea>
+<div class="code-actions"><button id="code-example">Load example</button><button id="code-validate">Validate</button><button id="code-apply" disabled>Generate scene</button></div><p id="code-status" role="status">Write a script or validate the example.</p>
+<details><summary>Supported API &amp; limits</summary><p>Use <code>async function main(api)</code>. Positions and rotations use {x, y, z}; rotations are degrees. No DOM, network or arbitrary JavaScript APIs.</p><pre>project.setMode("animation" | "thumbnail")
+scene.addCharacter({id, name?, position?, rotation?, scale?})
+scene.addAsset(blockIdOrItemName, {id, name?, position?, rotation?, scale?})
+timeline.setDuration(seconds) // 2–60
+timeline.key(handle, {time, position?, rotation?, scale?})
+timeline.keyPose(handle, {time, parts: {rightArm: {rotation: {x, y, z}}}})
+timeline.keyCamera({time, position, target, fov?})
+camera.set({position, target, fov?})
+terrain.setBlock({x, y, z, blockName})
+lights.setEnvironment({preset}) // daylight, golden hour, sunrise, sunset, night, moonlight, cinematic, studio</pre><p>Parts: head, body, leftArm, rightArm, leftLeg, rightLeg, leftElbow, rightElbow, leftKnee, rightKnee. IDs are required. Re-running reuses generated objects and preserves their current transforms and existing keys; new non-conflicting keys are added. It does not delete old generated content. Unsupported methods report an error.</p></details></dialog>
 <dialog id="ai-dialog" class="ai-dialog">
   <div class="dialog-head"><span class="eyebrow ai-eyebrow"><svg><use href="#i-sparkles"/></svg>GEMINI DIRECTOR</span><button class="icon-btn dialog-close" title="Close Gemini panel"><svg><use href="#i-close"/></svg></button></div>
   <div class="ai-heading"><div><h2>Describe it. Build it. Animate it.</h2><p class="muted">Turn an idea into editable terrain, characters and keyframes.</p></div><span class="ai-local-tag">YOUR KEY · YOUR SCENE</span></div>
