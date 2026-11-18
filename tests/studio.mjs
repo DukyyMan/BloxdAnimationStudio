@@ -1,4 +1,4 @@
-import {chromium} from 'playwright';
+import {launch,boot} from './browser.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -6,7 +6,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const results=path.join(root,'tests/results');fs.mkdirSync(results,{recursive:true});
 const checks=[],errors=[],requests=[];
 function check(name,pass,detail=''){checks.push({name,pass:!!pass,detail});console.log((pass?'PASS ':'FAIL ')+name+(detail?' — '+detail:''));}
-const browser=await chromium.launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const context=await browser.newContext({viewport:{width:1280,height:820},deviceScaleFactor:1,acceptDownloads:true});
 const page=await context.newPage();
 page.on('pageerror',e=>{errors.push(e.message);console.log('PAGE ERROR:',e.message);});
@@ -17,9 +17,7 @@ const get=fn=>page.evaluate(fn);
 async function input(id,value){await page.locator(id).evaluate((el,v)=>{el.focus();el.value=String(v);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));},value);}
 async function downloadClick(selector,name){const promise=page.waitForEvent('download',{timeout:90000});await page.locator(selector).click();const d=await promise;const f=path.join(results,name);await d.saveAs(f);return f;}
 try{
-  await page.goto(process.env.APP_URL||'http://127.0.0.1:8000/',{waitUntil:'load'});
-  await page.waitForFunction(()=>window.STUDIO?.ready,null,{timeout:60000});
-  await page.waitForFunction(()=>!document.querySelector('#loader'));
+  await boot(page,process.env.APP_URL||'http://127.0.0.1:8000/');
   const starter=await get(()=>STUDIO.projectData());
   const info=await get(()=>({blocks:STUDIO.world.count,choices:Object.keys(STUDIO.blockDefs).length,tools:STUDIO.toolNames.length,parts:Object.keys(STUDIO.selected.character.joints),tex:STUDIO.blockDefs.stone.mats[0].map.image.width,grass:STUDIO.blockDefs.grass.mats.map(m=>!!m.map),shadow:STUDIO.renderer.shadowMap.enabled,feet:new STUDIO.THREE.Box3().setFromObject(STUDIO.selected.character.joints.shinR.children[0]).min.y}));
   check('scene boots with instanced terrain',info.blocks>800,info.blocks+' blocks');
@@ -130,7 +128,7 @@ try{
   await page.locator('#undo').click();check('undo voxelisation restores the original mesh',await get(()=>STUDIO.selected.type==='import'));
   await page.setInputFiles('#file',path.join(root,'assets/models/Diamond Sword.glb'));await page.waitForFunction(()=>STUDIO.selected.name==='Diamond Sword'&&STUDIO.selected.type==='import');
   check('self-contained textured GLB imports correctly',await get(()=>{let textured=false;STUDIO.selected.root.traverse(o=>{if(o.isMesh&&o.material.map)textured=true;});return textured;}));
-  const save=await downloadClick('#save-project','project.bloxd.json');
+  await page.locator('#open-project-menu').click();const save=await downloadClick('#save-project','project.bloxd.json');
   check('save project produces JSON with scene and key data',JSON.parse(fs.readFileSync(save)).format==='bloxd-studio');
   const snapshot=await get(()=>({n:STUDIO.objects.length,b:STUDIO.world.count,k:STUDIO.camTrack.keys.length}));
   await page.locator('#delete-object').click();await page.setInputFiles('#project-file',save);await page.waitForFunction(n=>STUDIO.objects.length===n,snapshot.n,{timeout:30000});

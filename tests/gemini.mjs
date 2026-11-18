@@ -1,11 +1,11 @@
-import {chromium} from 'playwright';
+import {launch,boot} from './browser.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),out=path.join(root,'tests/results');fs.mkdirSync(out,{recursive:true});
 const checks=[],errors=[],requests=[],unexpected=[];const KEY='test-only-not-a-real-gemini-key';
 function check(name,pass,detail=''){checks.push({name,pass:!!pass,detail});console.log((pass?'PASS ':'FAIL ')+name+(detail?' — '+detail:''));}
-const browser=await chromium.launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});const page=await browser.newPage({viewport:{width:1440,height:980},acceptDownloads:true});
+const browser=await launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});const page=await browser.newPage({viewport:{width:1440,height:980},acceptDownloads:true});
 page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.url().startsWith('http://127.0.0.1:8000')&&r.status()>=400)errors.push('HTTP '+r.status()+' '+r.url());});page.on('request',r=>{if(/^https?:/.test(r.url())&&!r.url().startsWith('http://127.0.0.1:8000')&&!r.url().startsWith('https://generativelanguage.googleapis.com/'))unexpected.push(r.url());});
 const get=fn=>page.evaluate(fn),headers={'access-control-allow-origin':'*','access-control-allow-headers':'x-goog-api-key,content-type','access-control-allow-methods':'GET,POST,OPTIONS'};
 let responseMode='good',modelPlan,heldResponses=[];
@@ -29,7 +29,7 @@ async function confirm(){if(await page.locator('#ai-ack-row').isVisible())await 
 async function generate(){await page.locator('#ai-generate').click();await page.waitForFunction(()=>!STUDIO.ai.busy,null,{timeout:30000});}
 const core=()=>{const d=STUDIO.projectData();return JSON.stringify({world:d.world,objects:d.objects,light:d.light,cameraKeys:d.camera.keys,sceneName:d.sceneName,duration:d.timeline.duration,loop:d.timeline.loop});};
 try{
- await page.goto(process.env.APP_URL||'http://127.0.0.1:8000/');await page.waitForFunction(()=>window.STUDIO?.ready&&STUDIO.ai,null,{timeout:60000});await page.waitForFunction(()=>!document.querySelector('#loader'));
+ await boot(page);await page.waitForFunction(()=>window.STUDIO?.ai,null,{timeout:60000});
  const starter=await get(()=>STUDIO.projectData()),beforeCore=await get(core),ids=await get(()=>({bob:STUDIO.objects.find(r=>r.character).id,tree:STUDIO.objects.find(r=>r.type==='tree').id,lamp:STUDIO.objects.find(r=>r.type==='lamp').id}));
  modelPlan={title:'Bridge expedition',summary:'Editable terrain, two styles of actor animation, spinning items, camera travel and golden light.',commands:[
   {op:'duration',seconds:12,loop:false},{op:'terrain_fill',from:[-5,0,-2],to:[5,0,2],block:'planks'},
@@ -88,9 +88,9 @@ try{
  check('unmentioned original Bob demo keys remain intact',await page.evaluate(keys=>JSON.stringify(STUDIO.objects.find(r=>r.name==='Bob').character.keys)===keys,JSON.stringify(starter.objects.find(r=>r.type==='character').character.keys)));
  const afterCore=await get(core);await page.locator('#undo').click();check('one Undo restores the old terrain, objects, keys, lighting and duration',await get(core)===beforeCore);await page.locator('#redo').click();await get(()=>STUDIO.seek(6,true));check('Redo restores the generated scene without another API call',await get(core)===afterCore&&requests.filter(r=>r.method==='POST').length===1);
  // Save generated content normally; neither credentials nor AI client state should be serialized.
- const promise=page.waitForEvent('download');await page.locator('#save-project').click();const d=await promise,file=path.join(out,'gemini-generated-scene.bloxd.json');await d.saveAs(file);const savedText=fs.readFileSync(file,'utf8'),saved=JSON.parse(savedText);
+ await page.locator('#open-project-menu').click();const promise=page.waitForEvent('download');await page.locator('#save-project').click();const d=await promise,file=path.join(out,'gemini-generated-scene.bloxd.json');await d.saveAs(file);const savedText=fs.readFileSync(file,'utf8'),saved=JSON.parse(savedText);
  check('saved projects contain generated animation, not the API key',!savedText.includes(KEY)&&saved.objects.some(r=>r.name==='Gemini walker'&&r.character.keys.length>80));
- check('API key is not written to browser storage',await get(()=>!localStorage.length&&!sessionStorage.length));
+ check('API key is not written to browser storage',await page.evaluate(key=>{for(const store of[localStorage,sessionStorage])for(let i=0;i<store.length;i++){const v=String(store.getItem(store.key(i))||'');if(v.includes(key))return false;}return true;},KEY));
  await page.evaluate(data=>STUDIO.loadProject(data),starter);await page.setInputFiles('#project-file',file);await page.waitForFunction(()=>STUDIO.objects.some(r=>r.name==='Gemini walker'));await get(()=>STUDIO.seek(6,true));check('generated scenes reload with working object and camera animation',await get(()=>STUDIO.timeline.duration===12&&Math.abs(STUDIO.objects.find(r=>r.name==='Spinning sword').root.rotation.y-2*Math.PI)<1e-6));
  await page.evaluate(data=>STUDIO.loadProject(data),starter);await open();await page.locator('#ai-mode').selectOption('new');
  const fresh={title:'Night hill walk',summary:'A fresh small scene.',commands:[{op:'duration',seconds:8},{op:'terrain_height',center:[0,0],size:[12,12],baseY:-3,height:0,variation:2,seed:3,block:'grass'},{op:'terrain_fill',from:[-4,2,0],to:[4,2,1],block:'planks'},{op:'add',id:'solo',kind:'character',name:'Solo',position:[-3,0,0],grounded:true},{op:'motion',id:'solo',preset:'walk',start:0,end:8,from:[-3,0,0],to:[3,0,0],grounded:true},{op:'camera',keys:[{time:0,position:[12,9,14],target:[0,2,0]},{time:8,position:[-10,8,13],target:[0,2,0]}]},{op:'lighting',preset:'night'}]};

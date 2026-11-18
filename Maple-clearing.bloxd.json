@@ -4646,7 +4646,8 @@
         },
         "preset": "idle",
         "live": false,
-        "skin": null
+        "skin": null,
+        "armor": null
       }
     },
     {
@@ -4866,8 +4867,12 @@
     "shadows": true,
     "soft": true,
     "fog": true,
+    "renderDist": 125,
     "toolLit": false,
-    "preset": "golden"
+    "preset": "golden",
+    "keys": [],
+    "exposure": 1.13,
+    "fogColor": null
   },
   "camera": {
     "keys": [
@@ -4915,6 +4920,7 @@
       }
     ],
     "smooth": true,
+    "distortion": [],
     "view": {
       "position": [
         15,
@@ -4929,11 +4935,16 @@
       "fov": 45
     }
   },
+  "images": [],
+  "skybox": null,
+  "customTextures": {},
   "timeline": {
     "time": 0,
     "duration": 8,
     "playing": false,
     "loop": false,
-    "cameraEnabled": true
+    "cameraEnabled": true,
+    "fps": 24,
+    "interpolation": null
   }
 }
