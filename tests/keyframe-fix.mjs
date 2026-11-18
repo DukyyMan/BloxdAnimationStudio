@@ -1,10 +1,10 @@
-import {chromium} from 'playwright';
+import {launch,boot} from './browser.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),out=path.join(root,'tests/results');fs.mkdirSync(out,{recursive:true});
 const checks=[],errors=[];const check=(name,pass,detail='')=>{checks.push({name,pass:!!pass,detail});console.log((pass?'PASS ':'FAIL ')+name+(detail?' — '+detail:''));};const close=(a,b)=>Math.abs(a-b)<1e-5;
-const browser=await chromium.launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});const page=await browser.newPage({viewport:{width:1440,height:900},acceptDownloads:true});page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+const browser=await launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});const page=await browser.newPage({viewport:{width:1440,height:900},acceptDownloads:true});page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
 const get=fn=>page.evaluate(fn);
 async function time(t){await page.locator('#key-time').fill(String(t));await page.locator('#key-time').press('Tab');}
 async function angle(axis,value){await page.locator('#rot-'+axis).fill(String(value));}
@@ -12,7 +12,7 @@ async function terrain(){const p=await get(()=>{STUDIO.camera.updateMatrixWorld(
 async function reset(data){await page.evaluate(d=>STUDIO.loadProject(d),data);await get(()=>{STUDIO.frameScene();STUDIO.setMode('select');});}
 async function apply(){await page.locator('#key-pose').click();}
 try{
- await page.goto(process.env.APP_URL||'http://127.0.0.1:8000/');await page.waitForFunction(()=>window.STUDIO?.ready,null,{timeout:60000});await page.waitForFunction(()=>!document.querySelector('#loader'));
+ await boot(page);
  const starter=await get(()=>STUDIO.projectData());const bobKeys=JSON.stringify(starter.objects.find(r=>r.type==='character').character.keys),camKeys=JSON.stringify(starter.camera.keys);
  check('updated editor exposes exact key time and From start controls',await page.locator('#key-time').isVisible()&&await page.locator('#preview-start').isVisible());
  await terrain();check('real scene click selects an editable block',await get(()=>STUDIO.selected.type==='block'));
@@ -57,7 +57,7 @@ try{
  let handle=null;for(const q of candidates){await page.mouse.move(q.x,q.y);if(await get(()=>STUDIO.gizmo.axis==='Z')){handle=q;break;}}check('block rotation ring is accessible to a real pointer',!!handle);
  if(handle){await page.mouse.down();await page.mouse.move(handle.x+28,handle.y+21,{steps:6});await page.mouse.up();const end=await get(()=>STUDIO.selected.root.rotation.z);await time(3);check('real dragged rotation survives choosing a later time',Math.abs(end)>.01&&close(await get(()=>STUDIO.selected.root.rotation.z),end));await apply();await time(1.5);check('real dragged rotation is animated, not only stored as a static edit',close(await get(()=>STUDIO.selected.root.rotation.z),end/2));}
  await page.locator('#object-name').fill('Spinner regression');await page.locator('#object-name').press('Tab');await angle('x',25);
- const savedPromise=page.waitForEvent('download');await page.locator('#save-project').click();const download=await savedPromise,savedFile=path.join(out,'keyframe-fixed-project.bloxd.json');await download.saveAs(savedFile);const saved=JSON.parse(fs.readFileSync(savedFile));
+ await page.locator('#open-project-menu').click();const savedPromise=page.waitForEvent('download');await page.locator('#save-project').click();const download=await savedPromise,savedFile=path.join(out,'keyframe-fixed-project.bloxd.json');await download.saveAs(savedFile);const saved=JSON.parse(fs.readFileSync(savedFile));
  check('Save project applies a pending transform at its chosen time',saved.objects.find(r=>r.name==='Spinner regression').keys.some(k=>k.time===1.5&&close(k.rotation[0],25*Math.PI/180))&&!(await get(()=>STUDIO.selected.draft)));
  await page.locator('#delete-object').click();await page.setInputFiles('#project-file',savedFile);await page.waitForFunction(()=>STUDIO.objects.some(r=>r.name==='Spinner regression'));await get(()=>STUDIO.select(STUDIO.objects.find(r=>r.name==='Spinner regression')));await time(1.5);check('saved block keyframes replay correctly after opening the project',close(await get(()=>STUDIO.selected.root.rotation.x),25*Math.PI/180));
  await angle('y',40);const draftProject=await get(()=>STUDIO.projectData());check('raw project data also retains an unapplied draft',!!draftProject.objects.find(r=>r.name==='Spinner regression').draft);

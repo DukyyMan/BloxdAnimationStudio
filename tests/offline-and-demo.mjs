@@ -1,11 +1,11 @@
-import {chromium} from 'playwright';
+import {launch} from './browser.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const output=path.resolve(root,'../sources/render-frames');fs.mkdirSync(output,{recursive:true});
 const html=fs.readFileSync(path.resolve(root,'Bloxd-Studio.html'),'utf8');
-const browser=await chromium.launch({args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await launch({args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const context=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1,offline:true});
 const page=await context.newPage();const errors=[],network=[];
 page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});page.on('request',r=>{if(/^https?:/.test(r.url()))network.push(r.url());});

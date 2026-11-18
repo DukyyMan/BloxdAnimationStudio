@@ -54,7 +54,7 @@ async function main(){
   const sun=new THREE.DirectionalLight(0xffe6b9,3.1);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.normalBias=.025;sun.shadow.bias=-.00008;
   Object.assign(sun.shadow.camera,{left:-70,right:70,top:70,bottom:-70,near:.5,far:300});sun.shadow.camera.updateProjectionMatrix();
   const hemi=new THREE.HemisphereLight(0xe8f4f5,0x84917c,1.5);scene.add(sun,sun.target,hemi);
-  const light={az:-38,el:42,power:3.1,fill:1.5,color:'#ffe6b9',sky:'#c5d6d3',shadows:true,soft:true,fog:true,renderDist:125,toolLit:false,preset:'golden'};
+  const light={az:-38,el:42,power:3.1,fill:1.5,color:'#ffe6b9',sky:'#c5d6d3',shadows:true,soft:true,fog:true,renderDist:125,toolLit:false,preset:'golden',keys:[],exposure:1.13,fogColor:null};
   const LIGHTS={
     golden:{az:-38,el:42,power:3.1,fill:1.5,color:'#ffe6b9',sky:'#c5d6d3'},
     day:{az:25,el:65,power:3.1,fill:1.7,color:'#fffaf0',sky:'#c2dce8'},
@@ -77,7 +77,7 @@ async function main(){
   const gizmo=new TransformControls(camera,canvas);gizmo.setSize(.85);helpers.add(gizmo);
   const objects=[];let selected=null,serial=0,frames=0;
   const state={mode:'select',scope:'root',joint:'head',toolAction:'place',category:'blocks',block:'grass',inspector:'object',selectedKey:null,clean:false,libraryPage:0,libraryGroup:'',libraryAdvanced:false,pathMode:false,autoKey:false,onion:true,chainMode:false,chainQueue:[]};
-  const timeline={time:0,duration:8,playing:false,loop:false,cameraEnabled:true};
+  const timeline={time:0,duration:8,playing:false,loop:false,cameraEnabled:true,fps:24,interpolation:null};
   const camTrack=new CameraTrack(),soundtrack=new Soundtrack();
   let viewOverride=false,importBusy=false,recording=null,skinThumb='',playbackLast=performance.now(),sceneName='Maple clearing';
   // Custom visuals: an optional skybox image (data URL) and per-block-type texture overrides.
@@ -227,7 +227,8 @@ async function main(){
     scene.background=skyboxTex||new THREE.Color(light.sky);floor.material.color.set(light.sky).multiplyScalar(.88);
     renderDistanceUniform.value=clampRenderDistance(light.renderDist);
     // Fog fades out exactly where the render distance cuts, so nothing pops in/out.
-    scene.fog=light.fog?new THREE.Fog(light.sky,Math.max(4,renderDistanceUniform.value*.45),Math.max(20,renderDistanceUniform.value*1.02)):null;viewport.classList.toggle('night-scene',light.fill<.6);
+    scene.fog=light.fog?new THREE.Fog(light.fogColor||light.sky,Math.max(4,renderDistanceUniform.value*.45),Math.max(20,renderDistanceUniform.value*1.02)):null;viewport.classList.toggle('night-scene',light.fill<.6);
+    renderer.toneMappingExposure=light.exposure??1.13;
     updateWaterEnv({sunDir:sun.position,sky:light.sky,fog:scene.fog?{color:light.sky,near:scene.fog.near,far:scene.fog.far}:null});
     if(renderer.shadowMap.enabled!==light.shadows||renderer.shadowMap.type!==(light.soft?THREE.PCFSoftShadowMap:THREE.PCFShadowMap)){
       renderer.shadowMap.enabled=light.shadows;renderer.shadowMap.type=light.soft?THREE.PCFSoftShadowMap:THREE.PCFShadowMap;
@@ -298,8 +299,32 @@ async function main(){
       distBase=null;distBaseQ=null;
     }
   }
+  function sampleSunKeys(keys,t){
+    if(!keys?.length)return null;
+    const sorted=keys.slice().sort((a,b)=>a.time-b.time);
+    let a=sorted[0],b=null;
+    for(const k of sorted){if(k.time<=t)a=k;if(k.time>=t){b=k;break;}}
+    if(!b||b===a)return a;
+    const f=(t-a.time)/Math.max(1e-6,b.time-a.time);
+    const lerp=(x,y)=>x+(y-x)*f;
+    const out={};
+    if(a.azimuth!==undefined&&b.azimuth!==undefined)out.azimuth=lerp(a.azimuth,b.azimuth);
+    if(a.elevation!==undefined&&b.elevation!==undefined)out.elevation=lerp(a.elevation,b.elevation);
+    if(a.intensity!==undefined&&b.intensity!==undefined)out.intensity=lerp(a.intensity,b.intensity);
+    if(a.color!==undefined&&b.color!==undefined){const c=new THREE.Color(a.color).lerp(new THREE.Color(b.color),f);out.color='#'+c.getHexString();}
+    return out;
+  }
+  function applySunKeys(t){
+    const s=sampleSunKeys(light.keys,t);if(!s)return;
+    if(s.azimuth!==undefined)light.az=s.azimuth;
+    if(s.elevation!==undefined)light.el=s.elevation;
+    if(s.intensity!==undefined)light.power=s.intensity;
+    if(s.color!==undefined)light.color=s.color;
+    updateLight();
+  }
   function applyAtTime(t,includeCamera=true,includeDrafts=false){
     updateAssetAnimations(t);
+    applySunKeys(t);
     for(const r of objects){
       if(r.emitter)r.emitter.update(t);
       const c=r.character;if(!c){const s=sampleTransform(r.keys||[],t,r.rotationMode);if(s)setTransform(r.root,s);if(includeDrafts&&r.draft)applyActorState(r,mergeEdit(sampledState(r,t),r.draft));continue;}
@@ -366,7 +391,7 @@ async function main(){
     if(!r)return;
     if(r.character&&state.scope==='held'&&!r.character.mount.children.length)state.scope='root';
     const target=selectedTarget(),part=state.scope==='part';
-    $('#object-name').value=r.name;$('#object-kind').textContent=r.character?'Classic skin · recreated rig':r.type==='import'?'Your imported model':r.type==='voxel'?'Converted voxel model':r.type==='tool'?(itemDefs[r.options.asset]?.sprite?'Textured inventory sprite':'Original source geometry'):r.type==='block'?'Individual editable block':'Scene prop';
+    $('#object-name').value=r.name;$('#object-kind').textContent=r.character?'Classic skin · recreated rig':r.type==='import'?'Your imported model':r.type==='voxel'?'Converted voxel model':r.type==='mesh'?'Custom mesh · editable parts':r.type==='tool'?(itemDefs[r.options.asset]?.sprite?'Textured inventory sprite':'Original source geometry'):r.type==='block'?'Individual editable block':'Scene prop';
     $('#object-icon').innerHTML=r.character&&skinThumb?`<img src="${skinThumb}" alt="Bob">`:icon(r.type==='lamp'?'sun':'cube');
     $('#target-name').textContent=targetLabel();$('#scope-actions').hidden=!r.character;
     for(const[id,scope]of[['whole-player','root'],['pose-part','part'],['scope-held','held']])$('#'+id).classList.toggle('active',state.scope===scope);
@@ -1387,7 +1412,7 @@ async function main(){
     toast('Ghost ready for '+name+' — click the world to build it. Wheel = height, R = rotate, right-click or Esc cancels.');
   }
   function startPropGhost(asset){
-    cancelGhost();touchClosePanels();
+    cancelGhost();gizmo.detach();touchClosePanels();
     let root;try{root=makeTool(asset,1.2);}catch(e){toast('Could not build a preview for '+asset+'.');return;}
     const clones=[];
     root.traverse(o=>{if(o.isMesh){
@@ -1551,6 +1576,44 @@ async function main(){
       if(r.character){const c=r.character;d.character={pose:copyPose(c.displayPose),keys:clone(c.keys),tool:c.tool,held:heldOf(c),preset:c.preset,live:c.live,manual:c.manual,speed:c.speed,markers:c.markers.visible};}return d;
     }),light:clone(light),camera:{keys:clone(camTrack.keys),smooth:camTrack.smooth,view:{position:camera.position.toArray(),target:orbit.target.toArray(),fov:camera.fov}},timeline:{...timeline,playing:false},selection:{id:selected?.id||null,scope:state.scope,joint:state.joint},mode:state.mode};
   }
+  // Custom meshes are plain three.js groups built from primitive parts. The plan
+  // only carries data, so the live scene stays an ordinary, editable object.
+  function buildMeshParts(parts){
+    const group=new THREE.Group();group.name='Custom mesh';
+    for(const p of (parts||[])){
+      let geo;
+      if(p.kind==='box'||p.kind==='voxel')geo=new THREE.BoxGeometry(...(p.size||[1,1,1]));
+      else if(p.kind==='sphere')geo=new THREE.SphereGeometry(p.radius??.5,p.width??24,p.height??16);
+      else if(p.kind==='cylinder')geo=new THREE.CylinderGeometry(p.radius??.5,p.radius??.5,p.height??1,24);
+      else if(p.kind==='cone')geo=new THREE.ConeGeometry(p.radius??.5,p.height??1,24);
+      else if(p.kind==='plane')geo=new THREE.PlaneGeometry(...(p.size||[1,1]));
+      else if(p.kind==='faces'){const pos=new Float32Array(p.vertices.flat());geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(pos,3));const idx=p.faces.flat();if(idx.length%3===0)geo.setIndex(idx);geo.computeVertexNormals();}
+      else throw new Error('Unknown mesh part: '+p.kind);
+      const mat=new THREE.MeshStandardMaterial({color:p.color??0xffffff,roughness:p.roughness??.9,metalness:p.metalness??0,opacity:p.opacity??1,transparent:(p.opacity??1)<1});
+      if(p.emissive){mat.emissive=new THREE.Color(p.emissive);mat.emissiveIntensity=1;}
+      const mesh=new THREE.Mesh(geo,mat);
+      if(p.name)mesh.name=p.name;
+      if(p.position)mesh.position.fromArray(p.position);
+      if(p.rotation)mesh.rotation.set(p.rotation[0]*Math.PI/180,p.rotation[1]*Math.PI/180,p.rotation[2]*Math.PI/180);
+      if(p.scale!==undefined){if(typeof p.scale==='number')mesh.scale.setScalar(p.scale);else mesh.scale.fromArray(p.scale);}
+      mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
+    }
+    return group;
+  }
+  function applyObjectMaterial(root,spec){
+    if(!spec)return;
+    root.traverse(o=>{if(!o.isMesh)return;for(const m of (Array.isArray(o.material)?o.material:[o.material])){
+      if(spec.color!==undefined)m.color.set(spec.color);
+      if(spec.roughness!==undefined)m.roughness=spec.roughness;
+      if(spec.metalness!==undefined)m.metalness=spec.metalness;
+      if(spec.opacity!==undefined){m.opacity=spec.opacity;m.transparent=m.transparent||spec.opacity<1;}
+      if(spec.emissive!==undefined){m.emissive.set(spec.emissive);m.emissiveIntensity=spec.emissiveIntensity??1;}
+      if(spec.texture!==undefined){const tex=textures[spec.texture];if(tex){m.map=tex;m.needsUpdate=true;}}
+      if(spec.flatShading!==undefined)m.flatShading=spec.flatShading;
+      if(spec.wireframe!==undefined)m.wireframe=spec.wireframe;
+      m.needsUpdate=true;
+    }});
+  }
   function createAIRecord(data){
     let root,character;
     if(data.type==='character'){character=createCharacter(data.name);root=character.root;}
@@ -1559,18 +1622,33 @@ async function main(){
     else if(data.type==='tree')root=createTree(!!data.options.autumn);
     else if(data.type==='rock')root=createRock();
     else if(data.type==='lamp')root=makeLamp();
+    else if(data.type==='mesh')root=buildMeshParts(data.options?.parts);
     else throw new Error('AI cannot create this object type.');
     root.name=data.name;root.userData.studioId=data.id;return{id:data.id,type:data.type,name:data.name,root,character,options:clone(data.options||{}),keys:[],draft:null,rotationMode:data.rotationMode==='spins'?'spins':'shortest'};
   }
   function restoreAIScene(snapshot,registry){
     setPlaying(false);gizmo.detach();objectGroup.clear();objects.length=0;
+    const attached=new Set();
     for(const d of snapshot.objects){
       const r=registry.get(d.id);if(!r||r.type!==d.type)throw new Error('Scene object could not be restored.');
       r.name=r.root.name=d.name;r.options=clone(d.options||{});r.rotationMode=d.rotationMode==='spins'?'spins':'shortest';r.keys=clone(d.keys||[]);r.draft=d.draft?clone(d.draft):null;r.animPlaying=!!d.animPlaying;
       if(r.mixer){if(r.action)r.action.paused=!r.animPlaying;r.mixer.setTime(d.mixerTime||0);}
       setTransform(r.root,d.transform);
+      if(r.options.visibility!==undefined)r.root.visible=!!r.options.visibility;
+      if(r.options.material)applyObjectMaterial(r.root,r.options.material);
+      if(r.character&&r.options.skin){const tint={default:0xffffff,ember:0xff9a5a,frost:0x7fd4ff,moss:0x8fd17a}[r.options.skin];if(tint!==undefined)r.character.material.color.setHex(tint);}
+      if(r.options.attach)attached.add(r.id);
       if(r.character){const c=r.character,a=d.character;c.keys=clone(a.keys);c.pose=copyPose(a.pose);c.preset=a.preset;c.live=!!a.live;c.manual=a.manual!==false;c.speed=a.speed||1;c.markers.visible=!!a.markers;if(c.tool!==a.tool||!c.mount.children.length&&a.tool!=='none')equip(c,a.tool);setHeld(c,a.held);applyPose(c,c.pose);}
-      objects.push(r);objectGroup.add(r.root);
+      objects.push(r);if(!attached.has(r.id))objectGroup.add(r.root);
+    }
+    // Attachments are resolved after every object exists, so a child may attach
+    // to a parent that appears later in the snapshot.
+    for(const d of snapshot.objects){const r=registry.get(d.id),a=d.options?.attach;if(!a)continue;const parent=registry.get(a.parent);if(!parent)continue;
+      const anchor=a.part&&parent.character?.joints?.[a.part]?parent.character.joints[a.part]:(a.part==='mount'&&parent.character?parent.character.mount:parent.root);
+      if(!anchor)continue;anchor.add(r.root);
+      if(a.position)r.root.position.fromArray(a.position);
+      if(a.rotation)r.root.rotation.set(a.rotation[0]*Math.PI/180,a.rotation[1]*Math.PI/180,a.rotation[2]*Math.PI/180);
+      if(a.scale)r.root.scale.fromArray(a.scale);
     }
     serial=Math.max(serial,snapshot.serial);world.map=new Map(snapshot.world.blocks);world.size=snapshot.world.size;world.seed=snapshot.world.seed;world.rebuild();
     Object.assign(light,clone(snapshot.light));updateLight();syncLightUI();camTrack.keys=clone(snapshot.camera.keys);camTrack.smooth=snapshot.camera.smooth;camTrack.rebuild();
@@ -1594,12 +1672,12 @@ async function main(){
   function serializeRecord(r){
     const data={name:r.name,type:r.type,transform:transformOf(r.root),options:r.options||{},rotationMode:r.rotationMode||'shortest'};if(r.draft)data.draft=clone(r.draft);
     if(r.character){const c=r.character;data.character={pose:copyPose(c.displayPose),keys:clone(c.keys),tool:c.tool,held:heldOf(c),preset:c.preset,live:c.live,skin:c.skinData||null,armor:c.armor||null};}
-    else if(r.type==='import'||r.type==='voxel'||r.type==='image')data.object=r.root.toJSON();
+    else if(r.type==='import'||r.type==='voxel'||r.type==='image'||r.type==='mesh')data.object=r.root.toJSON();
     if(!r.character)data.keys=clone(r.keys||[]);return data;
   }
   function projectData(){return{format:'bloxd-studio',version:2,editorVersion:'4.0.0',sceneName,audio:{...clone(soundtrack.state),preview:$('#preview-audio').checked,includeVideo:$('#record-audio').checked},world:{blocks:[...world.map],size:world.size,seed:world.seed},objects:objects.map(serializeRecord),light:clone(light),camera:{keys:clone(camTrack.keys),smooth:camTrack.smooth,distortion:clone(distKeys),view:{position:camera.position.toArray(),target:orbit.target.toArray(),fov:camera.fov}},images:imageAssets.map(a=>({id:a.id,name:a.name,url:a.url})),skybox:skyboxURL,customTextures:Object.fromEntries([...customBlockTex].map(([id,e])=>[id,e.url])),timeline:{...timeline,playing:false}};}
   async function recordFromData(data){
-    if(!data||!['character','tree','rock','lamp','tool','block','import','voxel','image','particles'].includes(data.type))throw new Error('Unknown object type.');
+    if(!data||!['character','tree','rock','lamp','tool','block','import','voxel','image','particles','mesh'].includes(data.type))throw new Error('Unknown object type.');
     const vec=v=>Array.isArray(v)&&v.length===3&&v.every(n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<1000);
     if(!data.transform||!vec(data.transform.position)||!vec(data.transform.rotation)||!vec(data.transform.scale))throw new Error('Invalid object transform.');
     let r;
@@ -1607,7 +1685,7 @@ async function main(){
       const cdata=data.character||{},c=createCharacter(String(data.name).slice(0,60));
       if(cdata.skin){if(!String(cdata.skin).startsWith('data:image/'))throw new Error('Only embedded skin images are supported.');c.material.map=pixelTexture(await new THREE.TextureLoader().loadAsync(cdata.skin));c.skinData=cdata.skin;}
       c.pose=copyPose(cdata.pose||neutralPose());c.keys=clone(cdata.keys||[]);c.preset=cdata.preset||'idle';c.live=!!cdata.live;applyPose(c,c.pose);equip(c,toolNames.includes(cdata.tool)?cdata.tool:'none');setHeld(c,cdata.held);wearArmor(c,cdata.armor);r=register(c.root,'character',String(data.name).slice(0,60),{character:c,options:clone(data.options||{})});
-    }else if(data.type==='import'||data.type==='voxel'||data.type==='image'){
+    }else if(data.type==='import'||data.type==='voxel'||data.type==='image'||data.type==='mesh'){
       for(const image of data.object?.images||[]){const urls=Array.isArray(image.url)?image.url:[image.url];if(urls.some(u=>typeof u==='string'&&!u.startsWith('data:')))throw new Error('Projects must embed their textures, not link to external files.');}
       const root=await new THREE.ObjectLoader().parseAsync(data.object);r=register(root,data.type,String(data.name).slice(0,60),{animations:root.animations||[]});
     }else{r=addProp(data.type,new THREE.Vector3(),data.options||{});r.name=r.root.name=String(data.name).slice(0,60);
@@ -1636,6 +1714,7 @@ async function main(){
     if(typeof data.skybox==='string'&&data.skybox.startsWith('data:image/')&&data.skybox.length<18e6)setSkybox(data.skybox).catch(()=>setSkybox(null));else setSkybox(null);
     camTrack.keys=clone(data.camera.keys);camTrack.smooth=data.camera.smooth!==false;camTrack.rebuild();
     timeline.duration=clamp(+data.timeline?.duration||8,2,60);timeline.time=clamp(+data.timeline?.time||0,0,timeline.duration);timeline.loop=!!data.timeline?.loop;timeline.cameraEnabled=data.timeline?.cameraEnabled!==false;
+    timeline.fps=clamp(Math.round(+data.timeline?.fps||24),1,120);timeline.interpolation=data.timeline?.interpolation||null;
     if(data.camera.view)setCamera({position:new THREE.Vector3().fromArray(data.camera.view.position),target:new THREE.Vector3().fromArray(data.camera.view.target),fov:data.camera.view.fov});
     $('#preview-audio').checked=!!data.audio?.preview;$('#record-audio').checked=data.audio?.includeVideo!==false;syncAudioUI();
     history.length=0;future.length=0;viewOverride=true;setSceneName(data.sceneName);selectObject(newObjects.find(r=>r.character)||newObjects[0]||null);updatePath();refreshAll();syncFov();toast('Project opened. Everything stays in your browser.');
@@ -1949,7 +2028,7 @@ async function main(){
     }
   }
   $('#sandbox-note').hidden=window.self===window.top;
-  $('#open-export').onclick=()=>{if(recording){toast('Finish or cancel the current video export.');return;}setPlaying(false);syncAudioUI();$('#export-dialog').showModal();};$('#shot').onclick=captureStill;$('#rec').onclick=startRecording;$('#stop-record').onclick=stopRecording;$('#cancel-video').onclick=stopRecording;
+  $('#open-export').onclick=()=>{if(recording){toast('Finish or cancel the current video export.');return;}setPlaying(false);syncAudioUI();const fps=$('#video-fps');if(timeline.fps&&![...fps.options].some(o=>+o.value===timeline.fps)){const opt=document.createElement('option');opt.value=String(timeline.fps);opt.textContent=String(timeline.fps)+' · project';fps.appendChild(opt);}if(timeline.fps)fps.value=String(timeline.fps);$('#export-dialog').showModal();};$('#shot').onclick=captureStill;$('#rec').onclick=startRecording;$('#stop-record').onclick=stopRecording;$('#cancel-video').onclick=stopRecording;
   $('#import-clips').onclick=()=>{if(recording){toast('Finish or cancel the current video render first.');return;}$('#clip-file').click();};
   $('#clip-file').onchange=e=>{const files=e.target.files;if(files&&files.length)importClips(files);e.target.value='';};
   $('#assemble-video').onclick=renderAssembly;
@@ -2059,7 +2138,9 @@ async function main(){
     setTimeout(fix,80);setTimeout(fix,400);
   });
   let savedDevice=null;try{savedDevice=localStorage.getItem('studioDevice');}catch(e){}
-  if(savedDevice)applyDevice(savedDevice,false);else openDeviceDialog();
+  // savedDevice is already remembered; never remove it (the app would forget the
+  // user's choice on every visit), only fall back to the choice dialog.
+  if(savedDevice)applyDevice(savedDevice,true);else openDeviceDialog();
   // Public debug API is also used by the real-browser regression suite.
   window.STUDIO={THREE,interpolateRotation,scene,camera,renderer,orbit,gizmo,world,objects,camTrack,timeline,light,state,blockDefs,toolNames,
     video:{start:startRecording,cancel:stopRecording,get result(){return videoResult;},get busy(){return!!recording;}},
@@ -2068,10 +2149,10 @@ async function main(){
     serializeRecord,handleFiles,undo,redo,frameScene,focusObject,refreshAll,editBlock,cellFromHit,history,cleanRender,actorSnapshot,restoreActor,makeTool,toolTextureName,setToolLighting,applyObjectKey,applyPendingEdits,revertEdit,keysOf,poseState,
     zone:{get from(){return zone.from;},get to(){return zone.to;},get cells(){return zone.cells;},get plan(){return zone.plan;},get config(){return zoneCfg;},select:zoneSelect,clear:zoneClear,refresh:zoneRefreshUI},
     cinematicBuild,MAX_ZONE_BLOCKS};
-  const codeBridge={catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS)},snapshot:captureAIScene,apply:applyAIPlan,prepare:()=>{if(recording){toast('Stop recording first.');return false;}finishInputEdit();setPlaying(false);return true;}};
+  const codeBridge={catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS),textures:Object.keys(assetData.textures||{}).slice(0,1200)},snapshot:captureAIScene,apply:applyAIPlan,prepare:()=>{if(recording){toast('Stop recording first.');return false;}finishInputEdit();setPlaying(false);return true;}};
   window.STUDIO.code=initCodeStudio(codeBridge);
   window.STUDIO.ai=initGeminiPanel({
-    catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS)},
+    catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS),textures:Object.keys(assetData.textures||{}).slice(0,1200)},
     snapshot:captureAIScene,apply:applyAIPlan,canUndo:entry=>history.at(-1)===entry,undo,
     prepare:()=>{if(recording){toast('Stop the recording before opening Gemini.');return false;}finishInputEdit();setPlaying(false);return true;},
     play:()=>{applyPendingEdits();seek(0,true);setPlaying(true);}

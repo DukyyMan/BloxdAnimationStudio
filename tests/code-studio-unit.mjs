@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import { compileScript } from '../lib/code-studio.js';
-const before={serial:0,sceneName:'Test',world:{blocks:[],size:1,seed:1},objects:[],light:{},camera:{keys:[],smooth:false,view:{position:[8,6,12],target:[0,1,0],fov:45}},timeline:{duration:8,time:0,playing:false,cameraEnabled:true},selection:{id:null},mode:'select'};
-const catalog={blocks:[{id:'grass',label:'Grass',solid:true}],blockAliases:{},tools:['Diamond Pickaxe','none'],lights:{golden:{az:1}}};
+
+const catalog={
+  blocks:[{id:'grass',label:'Grass',solid:true},{id:'stone',label:'Stone',solid:true},{id:'sand',label:'Sand',solid:true},{id:'snow',label:'Snow',solid:true},{id:'dirt',label:'Dirt',solid:true}],
+  blockAliases:{},
+  tools:['Diamond Pickaxe','Gold Pickaxe','none'],
+  sourceModels:['ufo'],
+  textures:['grass.png'],
+  lights:{golden:{az:1},day:{az:2},night:{az:3},studio:{az:4},sunrise:{az:5},sunset:{az:6},moonlight:{az:7},cinematic:{az:8}}
+};
+const base={serial:0,sceneName:'Test',world:{blocks:[],size:1,seed:1},objects:[],light:{},camera:{keys:[],smooth:false,view:{position:[8,6,12],target:[0,1,0],fov:45}},timeline:{duration:8,time:0,playing:false,cameraEnabled:true},selection:{id:null},mode:'select'};
+const run=(code,snapshot=base,options)=>compileScript(code,snapshot,catalog,options);
+
+// ── Original behaviour: generated data is ordinary, editable, and update-by-id ──
 const source=`async function main(api) {
  const { scene, timeline, camera, lights } = api;
  const hero = await scene.addCharacter({id:"hero",position:{x:1,y:1,z:0}});
@@ -11,19 +22,118 @@ const source=`async function main(api) {
  camera.set({position:{x:8,y:6,z:12},target:{x:0,y:1,z:0}});
  lights.setEnvironment({preset:"golden hour"});
 }`;
-const first=compileScript(source,before,catalog);
+const first=run(source);
 assert.equal(first.result.next.objects.length,1);
 const hero=first.result.next.objects[0];
 assert.equal(hero.options.scriptId,'hero');
 assert.equal(hero.character.keys.find(k=>k.time===1).pose.armR[0],-120);
 assert.equal(hero.character.keys.find(k=>k.time===3).pose.head[1],30);
 assert.equal(first.result.next.camera.keys.length,1);
-assert.equal(before.objects.length,0);
-const second=compileScript(source,first.result.next,catalog);
+assert.equal(base.objects.length,0,'compileScript must not mutate the input snapshot');
+const second=run(source,first.result.next);
 assert.equal(second.result.next.objects.length,1);
-assert.equal(second.skipped,3);
+assert.equal(second.skipped,3,'existing keys are preserved, not duplicated');
 assert.deepEqual(second.result.next.objects[0].character.keys,hero.character.keys);
-assert.throws(()=>compileScript('async function main(api) { fetch("https://example.com"); }',before,catalog),/not available/);
-assert.throws(()=>compileScript('async function main(api) { while (true) {} }',before,catalog),/limit/i);
-assert.throws(()=>compileScript('async function main(api) { api.scene.addCharacter({id:"x",skin:"red"}); }',before,catalog),/Unsupported/);
-console.log('Code studio: generated editable data, preserved keys on rerun, rejected unsafe and unsupported scripts.');
+
+// ── Safety ──
+assert.throws(()=>run('async function main(api) { fetch("https://example.com"); }'),/not available/);
+assert.throws(()=>run('async function main(api) { while (true) {} }'),/limit/i);
+assert.throws(()=>run('async function main(api) { api.scene.addCharacter({}); }'),/id is required/);
+assert.throws(()=>run('async function main(api) { api.scene.addAsset("Nope",{id:"x"}); }'),/supports available/);
+
+// ── Custom meshes are real geometry data, not placeholders ──
+const mesh=run(`async function main(api) {
+ const { scene, mesh } = api;
+ const sword = scene.addMesh(mesh.group("Sword")
+   .box({ size: { x: .1, y: .8, z: .1 }, color: "#c8ccd4" })
+   .sphere({ radius: .2, position: { y: .5 }, color: "#ffd27a" }), { id: "sword", name: "Sword" });
+}`);
+const sword=mesh.result.next.objects.find(o=>o.id===mesh.result.next.objects.find(x=>x.options.scriptId==='sword').id);
+assert.equal(sword.type,'mesh');
+assert.equal(sword.options.parts.length,2);
+assert.equal(sword.options.parts[0].kind,'box');
+assert.equal(sword.options.parts[0].size[1],.8);
+assert.equal(sword.options.parts[1].kind,'sphere');
+assert.equal(sword.options.parts[1].color,'#ffd27a');
+
+// mesh.edit / clone / combine
+const combined=run(`async function main(api) {
+ const { scene, mesh } = api;
+ const a = mesh.group("a").box({ size: { x: 1, y: 1, z: 1 } });
+ const b = a.clone("b").box({ size: { x: 2, y: 2, z: 2 } });
+ a.combine(b);
+ a.edit(0, { color: "#ff0000" });
+ scene.addMesh(a, { id: "combo" });
+}`);
+const combo=combined.result.next.objects.find(o=>o.options.scriptId==='combo');
+assert.equal(combo.options.parts.length,2,'combine merges parts');
+assert.equal(combo.options.parts[0].color,'#ff0000','edit mutates a part');
+
+// ── Terrain generation ──
+const terrain=run(`async function main(api) { api.terrain.generate({ width: 12, depth: 12, biome: "plains", seed: 7 }); }`);
+assert.ok(terrain.result.next.world.blocks.length>100,'terrain.generate writes cells');
+assert.ok(terrain.result.next.world.blocks.some(([,b])=>b==='grass'),'plains are grass-topped');
+const desert=run(`async function main(api) { api.terrain.generate({ width: 8, depth: 8, biome: "desert", seed: 2 }); }`);
+assert.ok(desert.result.next.world.blocks.some(([,b])=>b==='sand'));
+const removed=run(`async function main(api) { api.terrain.setBlock({x:1,y:0,z:1,blockName:"stone"}); api.terrain.removeBlock({x:1,y:0,z:1}); }`);
+assert.equal(removed.result.next.world.blocks.length,0,'removeBlock erases the cell');
+
+// ── Transforms, materials, attachments ──
+const staged=run(`async function main(api) {
+ const { scene } = api;
+ const hero = await scene.addCharacter({ id: "hero" });
+ const rock = await scene.addAsset("stone", { id: "rock", name: "Rock" });
+ scene.setTransform(rock, { position: { x: 2, y: 1, z: 3 }, rotation: { y: 45 }, scale: { x: 2, y: 2, z: 2 } });
+ scene.setMaterial(rock, { color: "#3366ff", roughness: .2, metalness: .8 });
+ scene.attach(rock, scene.get("hero:rightArm"), { position: { x: 0, y: -.4, z: 0 } });
+}`);
+const rockRec=staged.result.next.objects.find(o=>o.options.scriptId==='rock');
+assert.deepEqual(rockRec.transform.position,[2,1,3]);
+assert.equal(rockRec.options.material.color,'#3366ff');
+assert.equal(rockRec.options.material.metalness,.8);
+assert.equal(rockRec.options.attach.parent,staged.result.next.objects.find(o=>o.options.scriptId==='hero').id);
+assert.equal(rockRec.options.attach.part,'armR');
+assert.equal(rockRec.options.attach.position[1],-.4);
+
+// limb handles
+const limb=run(`async function main(api) { const h = await api.scene.addCharacter({id:"h"}); api.scene.setTransform(api.scene.get("h:leftLeg"), { rotation: { x: -90 } }); }`);
+const limbRec=limb.result.next.objects[0];
+assert.equal(limbRec.character.pose.legL[0],-90,'a limb handle poses that joint');
+
+// ── Timeline: fps, easing, sun animation, motion presets ──
+const timed=run(`async function main(api) {
+ const { timeline, camera } = api;
+ timeline.setFPS(30); timeline.setInterpolation("smooth");
+ timeline.keySun({ time: 0, azimuth: -38, elevation: 42, intensity: 3 });
+ timeline.keySun({ time: 6, azimuth: 120, elevation: 12, intensity: 1, color: "#ffb27a" });
+ camera.orbit({ target: { x: 0, y: 1, z: 0 }, azimuth: 40, elevation: 22, radius: 12 });
+}`);
+assert.equal(timed.result.next.timeline.fps,30);
+assert.equal(timed.result.next.light.keys.length,2);
+assert.equal(timed.result.next.light.keys[1].color,'#ffb27a');
+assert.equal(timed.result.next.camera.keys.length,1);
+const cam=timed.result.next.camera.keys[0];
+assert.ok(Math.abs(Math.hypot(cam.position[0]-0,cam.position[1]-1,cam.position[2]-0)-12)<1e-6,'orbit radius is honoured');
+const eased=run(`async function main(api) { const h=await api.scene.addCharacter({id:"h"}); api.timeline.keyPose(h,{time:1,parts:{head:{rotation:{y:30}}}},{ease:"inout"}); }`);
+assert.equal(eased.result.next.objects[0].character.keys.find(k=>k.time===1).ease,'inout');
+const moved=run(`async function main(api) { const h=await api.scene.addCharacter({id:"h"}); api.timeline.preset(h,"Walk",{time:0,duration:4}); }`);
+assert.ok(moved.result.next.objects[0].character.keys.length>10,'preset bakes motion keys');
+
+// ── Replace-generated mode ──
+const replace=run(`async function main(api) { api.project.setGeneratedMode("replace"); const h=await api.scene.addCharacter({id:"hero"}); api.timeline.keyPose(h,{time:2,parts:{head:{rotation:{y:10}}}}); }`,first.result.next);
+assert.ok(replace.result.next.objects.length<first.result.next.objects.length||replace.generatedMode==='replace');
+assert.ok(replace.result.warnings.some(w=>/Replaces/.test(w)),'replace mode says what it replaces');
+const stale=run(`async function main(api) { api.project.setGeneratedMode("replace"); const h=await api.scene.addCharacter({id:"hero"}); api.timeline.keyPose(h,{time:4,parts:{head:{rotation:{y:10}}}}); }`,first.result.next);
+const staleHero=stale.result.next.objects.find(o=>o.options.scriptId==='hero');
+assert.ok(staleHero.character.keys.some(k=>k.time===4)&&!staleHero.character.keys.some(k=>k.time===1||k.time===3),'replace mode rebuilds the track');
+const removedObj=run(`async function main(api) { api.project.setGeneratedMode("replace"); }`,first.result.next);
+assert.equal(removedObj.result.next.objects.length,0,'replace mode deletes generated objects the script no longer creates');
+
+// ── Camera helpers and asset search ──
+const framed=run(`async function main(api) { const h=await api.scene.addCharacter({id:"h",position:{x:0,y:1,z:0}}); api.camera.frame(h,{distance:5}); }`);
+assert.ok(framed.result.next.camera.keys.length>=1);
+const found=run(`async function main(api) { const r = api.assets.search("pick", {limit:5}); if (r.length) await api.scene.addAsset("Diamond Pickaxe", {id:"found"}); }`);
+assert.equal(found.result.next.objects.length,1,'asset search results can be placed');
+assert.equal(found.result.next.objects[0].options.asset,'Diamond Pickaxe');
+
+console.log('Code studio: editable generated data, meshes, terrain, attachments, materials, animated sun, fps, easing, replace-generated, asset search, preserved keys, rejected unsafe scripts.');

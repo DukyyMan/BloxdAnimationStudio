@@ -1,16 +1,17 @@
-import{chromium}from'playwright';
+import {launch,boot} from './browser.mjs';
 import fs from'node:fs';import path from'node:path';import{fileURLToPath}from'node:url';import{spawnSync}from'node:child_process';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),out=path.join(root,'tests/results');fs.mkdirSync(out,{recursive:true});
 const checks=[],errors=[],downloads=[];function check(name,pass,detail=''){checks.push({name,pass:!!pass,detail});console.log((pass?'PASS ':'FAIL ')+name+(detail?' — '+detail:''));}
-const browser=await chromium.launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});const page=await browser.newPage({viewport:{width:1280,height:900},acceptDownloads:true});page.on('pageerror',e=>errors.push(e.message));page.on('download',d=>downloads.push(d.suggestedFilename()));
+const browser=await launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});const page=await browser.newPage({viewport:{width:1280,height:900},acceptDownloads:true});page.on('pageerror',e=>errors.push(e.message));page.on('download',d=>downloads.push(d.suggestedFilename()));
 const get=fn=>page.evaluate(fn);async function time(t){await page.locator('#key-time').fill(String(t));await page.locator('#key-time').press('Tab');}async function input(id,v){await page.locator(id).fill(String(v));await page.locator(id).press('Tab');}
 async function render(){await page.locator('#rec').click();await page.waitForFunction(()=>!STUDIO.video.busy,null,{timeout:180000});}
 async function download(name){const promise=page.waitForEvent('download');await page.locator('#video-download').click();const d=await promise,p=path.join(out,name);await d.saveAs(p);return p;}
 function probe(file){const result=spawnSync('ffprobe',['-v','error','-count_frames','-show_entries','format=format_name,duration:stream=codec_name,codec_type,width,height,avg_frame_rate,nb_read_frames,duration','-of','json',file],{encoding:'utf8'});if(result.status!==0)throw new Error(result.stderr||'ffprobe not available');return JSON.parse(result.stdout);}
-function decode(file){const result=spawnSync('ffmpeg',['-v','error','-i',file,'-fps_mode','passthrough','-enc_time_base','1:1000000','-f','null','-'],{encoding:'utf8'});return{ok:result.status===0,errors:result.stderr};}
+function decode(file){let result=spawnSync('ffmpeg',['-v','error','-i',file,'-fps_mode','passthrough','-enc_time_base','1:1000000','-f','null','-'],{encoding:'utf8'});if(result.status!==0){// older ffmpeg builds (pre-5.0) use -vsync instead of -fps_mode
+  result=spawnSync('ffmpeg',['-v','error','-i',file,'-vsync','passthrough','-f','null','-'],{encoding:'utf8'});}return{ok:result.status===0,errors:result.stderr};}
 function core(){const p=STUDIO.projectData();return JSON.stringify({objects:p.objects,world:p.world,camera:p.camera,light:p.light,time:p.timeline.time,loop:p.timeline.loop});}
 try{
- await page.goto(process.env.APP_URL||'http://127.0.0.1:8000/');await page.waitForFunction(()=>window.STUDIO?.ready,null,{timeout:60000});await page.waitForFunction(()=>!document.querySelector('#loader'));const starter=await get(()=>STUDIO.projectData());
+ await boot(page);const starter=await get(()=>STUDIO.projectData());
  check('direct / shortest rotation is the default',await get(()=>STUDIO.objects.every(r=>r.rotationMode==='shortest')));
  await get(()=>{const r=STUDIO.addProp('block',new STUDIO.THREE.Vector3(0,3,3),{block:'diamondore'});STUDIO.select(r);});await time(0);await page.locator('#key-pose').click();await time(2);
  await input('#obj-x',-4);await input('#obj-x',7);await input('#obj-x',4);await input('#obj-scale',2);for(let i=0;i<3;i++)await page.locator('[data-turn="y"]').click();await page.locator('#key-pose').click();await time(1);

@@ -277,17 +277,25 @@
 <dialog id="code-dialog" class="code-dialog"><div class="dialog-head"><span class="eyebrow">CODE EDITOR · LOCAL</span><button class="icon-btn dialog-close" title="Close">×</button></div>
 <h2>Build with code.</h2><p class="muted">A supported subset of the previous Studio API. Validate before applying; generated objects and keys are editable in the scene. Existing keys at the same time are preserved.</p>
 <textarea id="code-source" spellcheck="false" aria-label="Animation code"></textarea>
-<div class="code-actions"><button id="code-example">Load example</button><button id="code-validate">Validate</button><button id="code-apply" disabled>Generate scene</button></div><p id="code-status" role="status">Write a script or validate the example.</p>
+<div class="code-actions"><label class="code-replace" title="Rebuild generated objects and tracks instead of updating them by ID"><input type="checkbox" id="code-replace"> Replace generated</label><button id="code-example">Load example</button><button id="code-validate">Validate</button><button id="code-apply" disabled>Generate scene</button></div><p id="code-status" role="status">Write a script or validate the example.</p>
 <details><summary>Supported API &amp; limits</summary><p>Use <code>async function main(api)</code>. Positions and rotations use {x, y, z}; rotations are degrees. No DOM, network or arbitrary JavaScript APIs.</p><pre>project.setMode("animation" | "thumbnail")
-scene.addCharacter({id, name?, position?, rotation?, scale?})
-scene.addAsset(blockIdOrItemName, {id, name?, position?, rotation?, scale?})
-timeline.setDuration(seconds) // 2–60
-timeline.key(handle, {time, position?, rotation?, scale?})
-timeline.keyPose(handle, {time, parts: {rightArm: {rotation: {x, y, z}}}})
-timeline.keyCamera({time, position, target, fov?})
-camera.set({position, target, fov?})
-terrain.setBlock({x, y, z, blockName})
-lights.setEnvironment({preset}) // daylight, golden hour, sunrise, sunset, night, moonlight, cinematic, studio</pre><p>Parts: head, body, leftArm, rightArm, leftLeg, rightLeg, leftElbow, rightElbow, leftKnee, rightKnee. IDs are required. Re-running reuses generated objects and preserves their current transforms and existing keys; new non-conflicting keys are added. It does not delete old generated content. Unsupported methods report an error.</p></details></dialog>
+project.setMode("animation" | "thumbnail"); project.setGeneratedMode("update" | "replace")
+scene.addCharacter({id, name?, position?, rotation?, scale?, skin?, visibility?})
+scene.addAsset(blockIdOrItemName | assetEntry, {id, name?, position?, rotation?, scale?})
+scene.addMesh(mesh.group("name").box({size:{x,y,z}, color?}).sphere({radius, height}), {id, name?})
+scene.get(idOrPartId); scene.remove(handle); scene.setTransform(handle, {position?, rotation?, scale?, visibility?, opacity?})
+scene.setMaterial(handle, {color?, roughness?, metalness?, opacity?, emissive?, texture?, flatShading?, wireframe?})
+scene.attach(child, parentOrPart, {position?, rotation?, scale?}); scene.detach(child)
+terrain.generate({width?, depth?, biome?, seed?, amplitude?, frequency?, island?, decorate?, surfaceBlock?})
+terrain.setBlock({x, y, z, blockName}); terrain.removeBlock({x, y, z}); terrain.clear()
+timeline.setDuration(seconds); timeline.setFPS(1–120); timeline.setPlayhead(t); timeline.setInterpolation(ease)
+timeline.key(handle, {time, position?, rotation?, scale?}, {ease?}); timeline.keyPose(handle, {time, parts}, {ease?})
+timeline.keyCamera({time, position?, target?, rotation?, fov?}, {ease?}); timeline.keySun({time, azimuth?, elevation?, intensity?, color?})
+timeline.preset(handle, "Walk" | "Run" | "Wave" | "Mine" | "Idle" | "Jump" | ..., {time?, duration?})
+camera.set({position?, target?, rotation?, fov?}); camera.lookAt({x,y,z}); camera.zoom(fov)
+camera.orbit({target?, azimuth?, elevation?, radius?, fov?}); camera.frame(object, {distance?, fov?})
+lights.setEnvironment({preset?, exposure?, ambient?, sky?, fog?, fogColor?}); lights.setSun({azimuth?, elevation?, intensity?, color?, softness?})
+assets.search(query, {category?, limit?}); mesh.group(name).box/.sphere/.cylinder/.cone/.plane/.voxel/.faces(...).edit(i, {...}).clone(name).combine(group)</pre><p>Parts: head, body, leftArm, rightArm, leftLeg, rightLeg, leftElbow, rightElbow, leftKnee, rightKnee. IDs are required. Update mode reuses generated objects and preserves their current transforms and existing keys; Replace mode rebuilds generated objects and tracks. Easing: linear, smooth, in, out, inout, step, bezier, spline. Unsupported methods report an error.</p></details></dialog>
 <dialog id="ai-dialog" class="ai-dialog">
   <div class="dialog-head"><span class="eyebrow ai-eyebrow"><svg><use href="#i-sparkles"/></svg>GEMINI DIRECTOR</span><button class="icon-btn dialog-close" title="Close Gemini panel"><svg><use href="#i-close"/></svg></button></div>
   <div class="ai-heading"><div><h2>Describe it. Build it. Animate it.</h2><p class="muted">Turn an idea into editable terrain, characters and keyframes.</p></div><span class="ai-local-tag">YOUR KEY · YOUR SCENE</span></div>

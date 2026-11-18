@@ -1,10 +1,10 @@
-import {chromium} from 'playwright';
+import {launch,boot} from './browser.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),out=path.join(root,'tests/results');fs.mkdirSync(out,{recursive:true});
 const checks=[],errors=[];function check(name,pass,detail=''){checks.push({name,pass:!!pass,detail});console.log((pass?'PASS ':'FAIL ')+name+(detail?' — '+detail:''));}
-const browser=await chromium.launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const page=await browser.newPage({viewport:{width:1440,height:900},acceptDownloads:true});page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});page.on('response',r=>{if(r.status()>=400)errors.push(r.status()+' '+r.url());});
 const get=fn=>page.evaluate(fn);
 async function input(id,v){await page.locator(id).evaluate((el,v)=>{el.focus();el.value=String(v);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));},v);}
@@ -13,7 +13,7 @@ async function screen(p){return page.evaluate(p=>{STUDIO.scene.updateMatrixWorld
 async function clickWorld(p){const q=await screen(p);await page.mouse.click(q.x,q.y);}
 async function reset(starter){await page.evaluate(d=>STUDIO.loadProject(d),starter);await get(()=>STUDIO.frameScene());}
 try{
- await page.goto('http://127.0.0.1:8000/');await page.waitForFunction(()=>window.STUDIO?.ready,null,{timeout:60000});await page.waitForFunction(()=>!document.querySelector('#loader'));
+ await boot(page);
  const starter=await get(()=>STUDIO.projectData());
  check('v2 starter boots and stores v2 project data',starter.version===2&&starter.objects.length===9);
  check('Place and Remove are visible, separate buttons',await page.locator('#place-blocks').isVisible()&&await page.locator('#erase-blocks').isVisible());
@@ -36,6 +36,7 @@ try{
  });
  check('rendered front-face pixel colors match the source PNGs',palette.comparisons>100&&palette.maxError<=2,JSON.stringify(palette));
  await page.locator('[data-library="tools"]').click();await page.locator('#asset-search').fill('Gold Pickaxe');await page.locator('#asset-grid button[title="Gold Pickaxe"]').click();
+ await page.mouse.click(720,400); // confirm the placement ghost on the ground
  check('Place item creates an independently selectable tool',await get(()=>STUDIO.selected.type==='tool'&&STUDIO.selected.options.asset==='Gold Pickaxe'));
  check('placing a tool does not group it with a pedestal',await get(()=>STUDIO.selected.root.children.length===1&&STUDIO.selected.root.children[0].children.length===1));
  check('item pivot is centered for rotation',await get(()=>{const t=STUDIO.selected.root,b=new STUDIO.THREE.Box3().setFromObject(t);return b.getCenter(new STUDIO.THREE.Vector3()).distanceTo(t.position)<.001;}));
@@ -48,8 +49,13 @@ try{
  check('tool transform keys appear on its timeline',await page.locator('#pose-track .key-marker').count()===2&&(await page.locator('#key-pose').textContent()).includes('transform'));
  const spin=await get(()=>STUDIO.projectData());await page.evaluate(d=>STUDIO.loadProject(d),spin);await get(()=>{STUDIO.select(STUDIO.objects.find(r=>r.options?.asset==='Gold Pickaxe'));STUDIO.seek(1);});
  check('item animation survives project round-trip',await get(()=>STUDIO.selected.keys.length===2&&Math.abs(STUDIO.selected.root.rotation.y-2*Math.PI)<.001));
- await get(()=>STUDIO.focusObject(STUDIO.selected));await page.locator('[data-mode="select"]').click();
- const itemPoint=await get(()=>{let m;STUDIO.selected.root.traverse(o=>{if(o.isMesh)m=o;});STUDIO.scene.updateMatrixWorld(true);const a=m.geometry.attributes.position;return new STUDIO.THREE.Vector3().fromBufferAttribute(a,0).add(new STUDIO.THREE.Vector3(.5,.5,.005)).applyMatrix4(m.matrixWorld).toArray();});await clickWorld(itemPoint);
+ await get(()=>{const t=STUDIO.objects.find(r=>r.options?.asset==='Gold Pickaxe');t.root.position.set(0,1.65,0);STUDIO.focusObject(t);});await page.locator('[data-mode="select"]').click();
+ const itemPoint=await get(()=>{ // aim at the tool's real surface: focusObject centres it, so cast the screen-centre ray
+  STUDIO.scene.updateMatrixWorld(true);
+  const ray=new STUDIO.THREE.Raycaster();ray.setFromCamera(new STUDIO.THREE.Vector2(0,0),STUDIO.camera);
+  const hits=ray.intersectObject(STUDIO.selected.root,true);
+  return (hits.length?hits[0].point:new STUDIO.THREE.Box3().setFromObject(STUDIO.selected.root).getCenter(new STUDIO.THREE.Vector3())).toArray();
+ });await clickWorld(itemPoint);
  check('real canvas click picks a visible tool, not terrain behind it',await get(()=>STUDIO.selected?.type==='tool'&&STUDIO.selected.options.asset==='Gold Pickaxe'));
  await reset(starter);await page.locator('[data-library="blocks"]').click();await page.locator('#asset-grid button[title="Grass Block"]').click();const count=await get(()=>STUDIO.world.count);await clickWorld([5.5,1.001,4.5]);
  check('Place mode adds a block on the clicked face',await get(()=>STUDIO.world.get(5,1,4)==='grass'&&STUDIO.world.count===957));

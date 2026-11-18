@@ -1,16 +1,19 @@
-import {chromium} from 'playwright';
+import {launch} from './browser.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),results=path.join(root,'tests/results'),html=fs.readFileSync(path.join(root,'START-HERE.html'),'utf8');
 const checks=[],errors=[],network=[];function check(name,pass,detail=''){checks.push({name,pass:!!pass,detail});console.log((pass?'PASS ':'FAIL ')+name+(detail?' — '+detail:''));}
-const browser=await chromium.launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});const context=await browser.newContext({viewport:{width:1440,height:900},offline:true,acceptDownloads:true});
+const browser=await launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});const context=await browser.newContext({viewport:{width:1440,height:900},offline:true,acceptDownloads:true});
 function watch(page){page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});page.on('request',r=>{if(/^https?:/.test(r.url()))network.push(r.url());});}
 try{
- const page=await context.newPage();watch(page);await page.goto('file://'+path.join(root,'START-HERE.html'));await page.waitForFunction(()=>window.STUDIO?.ready,null,{timeout:60000});await page.waitForFunction(()=>!document.querySelector('#loader'));
+ const page=await context.newPage();watch(page);await page.addInitScript(()=>localStorage.setItem('studioDevice','desktop'));
+ await page.goto('file://'+path.join(root,'START-HERE.html'));await page.waitForFunction(()=>window.STUDIO?.ready,null,{timeout:60000});await page.waitForFunction(()=>!document.querySelector('#loader'));await page.evaluate(()=>{const b=document.querySelector('.dock [data-panel="library"]'),i=document.querySelector('.dock [data-panel="inspector"]'),t=document.querySelector('.dock [data-panel="timeline"]');b.click();i.click();t.click();});await page.waitForTimeout(500);
  const starter=await page.evaluate(()=>STUDIO.projectData());check('standalone v2 opens with the network disabled',starter.version===2&&starter.objects.length===9);
  fs.writeFileSync(path.join(root,'Maple-clearing.bloxd.json'),JSON.stringify(starter,null,2));
  await page.screenshot({path:path.resolve(root,'../sources/final-editor.png')});
+ await page.evaluate(()=>{const b=document.querySelector('.dock [data-panel="library"]'),i=document.querySelector('.dock [data-panel="inspector"]'),t=document.querySelector('.dock [data-panel="timeline"]');b.click();i.click();t.click();});
+ await page.waitForTimeout(500);
  await page.evaluate(()=>{const r=STUDIO.addProp('block',new STUDIO.THREE.Vector3(2,3,4),{block:'stone'});STUDIO.select(r);});
  await page.locator('#rot-y').fill('90');await page.locator('#key-time').fill('3');await page.locator('#key-time').press('Tab');
  check('standalone keeps a typed rotation while selecting the key time',await page.evaluate(()=>Math.abs(STUDIO.selected.root.rotation.y-Math.PI/2)<1e-6&&!!STUDIO.selected.draft));
@@ -20,7 +23,7 @@ try{
  const bytes=fs.readFileSync(path.join(results,'offline-soundtrack.mp3'));check('standalone can encode and download MP3 fully offline',bytes[0]===255&&bytes.length>100000,bytes.length+' bytes');await page.locator('#export-dialog .dialog-close').click();
  const legacy=JSON.parse(fs.readFileSync(path.join(root,'tests/fixtures/v1-project.json')));await page.evaluate(d=>STUDIO.loadProject(d),legacy);
  check('version 1 projects migrate without losing tool stands',await page.evaluate(()=>STUDIO.objects.filter(r=>r.type==='tool').length===2&&STUDIO.objects.filter(r=>r.type==='block'&&r.options.block==='log').length===2&&STUDIO.world.count===956));
- await page.evaluate(d=>STUDIO.loadProject(d),starter);await page.locator('#scope-held').click();await page.waitForTimeout(200);
+ await page.evaluate(d=>STUDIO.loadProject(d),starter);await page.evaluate(()=>{const i=document.querySelector('.dock [data-panel="inspector"]');if(!document.body.classList.contains('panel-inspector'))i.click();});await page.locator('#scope-held').click();await page.waitForTimeout(200);
  check('scope buttons correctly identify the selected held item',await page.locator('#scope-held').evaluate(el=>el.classList.contains('active'))&&!(await page.locator('#whole-player').evaluate(el=>el.classList.contains('active'))));
  await page.evaluate(()=>STUDIO.focusObject(STUDIO.selected));await page.screenshot({path:path.resolve(root,'../sources/final-bob-closeup.png')});
  const videoFile=path.join(results,'Maple-clearing-demo.webm');if(fs.existsSync(videoFile)){
@@ -38,11 +41,13 @@ try{
  await host.setContent('<html><body style="margin:0"><iframe sandbox="allow-scripts" style="border:0;width:100vw;height:100vh"></iframe></body></html>');
  const locked=html.replace('<head>','<head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data: blob:; connect-src data: blob:; media-src data: blob:;">');await host.locator('iframe').evaluate((el,text)=>el.srcdoc=text,locked);
  const handle=await host.locator('iframe').elementHandle(),frame=await handle.contentFrame();await frame.waitForFunction(()=>window.STUDIO?.ready,null,{timeout:90000});
+ // The sandboxed preview has no localStorage, so the device gate must be answered in-page.
+ await frame.evaluate(()=>{if(document.querySelector('#device-dialog')?.open)document.querySelector('#choose-desktop').click();});
  const opaque=await frame.evaluate(async()=>{const B=STUDIO,mp3=await B.soundtrack.mp3(2);B.setScope('held');B.setMode('rotate');B.cleanRender();return{blocks:B.world.count,tools:B.toolNames.length,png:document.querySelector('#scene').toDataURL().length,mp3:mp3.size,held:B.gizmo.object===B.selected.character.mount.children[0],downloadNote:!document.querySelector('#sandbox-note').hidden};});
  check('opaque sandbox preview renders all local assets',opaque.blocks===956&&opaque.tools>=2406&&opaque.png>30000,JSON.stringify(opaque));
  check('rotation and MP3 encoding work inside the restricted preview',opaque.held&&opaque.mp3>30000);
  check('embedded preview explains the download restriction',opaque.downloadNote);
- await frame.evaluate(()=>{const r=STUDIO.addProp('block',new STUDIO.THREE.Vector3(2,3,4),{block:'stone'});STUDIO.select(r);});await frame.locator('#rot-y').fill('90');await frame.locator('#key-time').fill('3');await frame.locator('#key-time').press('Tab');await frame.locator('#key-pose').click();await frame.evaluate(()=>STUDIO.seek(1.5));
+ await frame.evaluate(()=>{const b=document.querySelector('.dock [data-panel="library"]'),i=document.querySelector('.dock [data-panel="inspector"]'),t=document.querySelector('.dock [data-panel="timeline"]');b.click();i.click();t.click();const r=STUDIO.addProp('block',new STUDIO.THREE.Vector3(2,3,4),{block:'stone'});STUDIO.select(r);});await frame.waitForTimeout(500);await frame.locator('#rot-y').fill('90');await frame.locator('#key-time').fill('3');await frame.locator('#key-time').press('Tab');await frame.locator('#key-pose').click();await frame.evaluate(()=>STUDIO.seek(1.5));
  check('fixed edit-first / time-second workflow animates inside the opaque preview',await frame.evaluate(()=>STUDIO.selected.keys.length===2&&Math.abs(STUDIO.selected.root.rotation.y-Math.PI/4)<1e-6));
  await frame.locator('#open-ai').click();await frame.locator('#ai-example').click();if(await frame.locator('#ai-ack-row').isVisible())await frame.locator('#ai-ack').check();await frame.locator('#ai-play-after').uncheck();await frame.locator('#ai-apply').click();await frame.waitForFunction(()=>!document.querySelector('#ai-dialog').open);
  check('local AI command execution also works in the opaque file preview',await frame.evaluate(()=>STUDIO.timeline.duration===10&&STUDIO.objects.some(r=>r.name==='Bob the explorer'&&r.character.keys.length>70)));
