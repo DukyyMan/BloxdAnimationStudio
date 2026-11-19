@@ -100,4 +100,4 @@ npm run build
 
 `DracoPy` is a **build-time** decoder only. The runtime uses the included `fflate` MIT-licensed decompressor to unpack a local data bank; there is no runtime fetch of game assets. Existing v1–v3 projects retain the old short block IDs through aliases.
 
-Gemini receives compact base-block/item catalogs, not thousands of duplicated geometry blobs or images. New block names and item choices work with the existing validated command interpreter. Gemini still uses your own API key and is optional.
+New block names and item choices work with the local validated command interpreter.
