@@ -10,7 +10,7 @@ try{
  const page=await context.newPage();watch(page);await page.addInitScript(()=>localStorage.setItem('studioDevice','desktop'));
  await page.goto('file://'+path.join(root,'START-HERE.html'));await page.waitForFunction(()=>window.STUDIO?.ready,null,{timeout:60000});await page.waitForFunction(()=>!document.querySelector('#loader'));await page.evaluate(()=>{const b=document.querySelector('.dock [data-panel="library"]'),i=document.querySelector('.dock [data-panel="inspector"]'),t=document.querySelector('.dock [data-panel="timeline"]');b.click();i.click();t.click();});await page.waitForTimeout(500);
  const starter=await page.evaluate(()=>STUDIO.projectData());check('standalone v2 opens with the network disabled',starter.version===2&&starter.objects.length===9);
- fs.writeFileSync(path.join(root,'Maple-clearing.bloxd.json'),JSON.stringify(starter,null,2));
+
  await page.screenshot({path:path.resolve(root,'../sources/final-editor.png')});
  await page.evaluate(()=>{const b=document.querySelector('.dock [data-panel="library"]'),i=document.querySelector('.dock [data-panel="inspector"]'),t=document.querySelector('.dock [data-panel="timeline"]');b.click();i.click();t.click();});
  await page.waitForTimeout(500);
@@ -31,8 +31,8 @@ try{
   // The normal export is frame-based: verify clip timing, allowing codec padding.
   check('WebM export contains decodable moving-picture and audio tracks',video.width>500&&video.height>300&&Number.isFinite(video.duration)&&Math.abs(video.duration-8)<.05&&Math.abs(video.audioDuration-8)<.05&&video.rms>.003,JSON.stringify(video));
  }
- await page.locator('#open-ai').click();check('standalone Gemini panel starts without a saved key',await page.locator('#ai-key').inputValue()==='');await page.locator('#ai-example').click();
- check('standalone validates the local command example without networking',(await page.locator('#ai-status').textContent()).includes('Plan validated'));
+ await page.locator('#open-ai').click();check('standalone command panel has no API key input',await page.locator('#ai-key').count()===0);await page.locator('#ai-example').click();
+ check('standalone validates the local command example without networking',(await page.locator('#ai-status').textContent()).includes('Validated'));
  if(await page.locator('#ai-ack-row').isVisible())await page.locator('#ai-ack').check();await page.locator('#ai-play-after').uncheck();await page.locator('#ai-apply').click();await page.waitForFunction(()=>!document.querySelector('#ai-dialog').open);
  check('standalone command execution creates real editable animation',await page.evaluate(()=>STUDIO.objects.length===11&&STUDIO.timeline.duration===10&&STUDIO.objects.find(r=>r.name==='Bob the explorer').character.keys.length>70));await page.locator('#undo').click();
  check('standalone Undo restores the entire pre-command scene',await page.evaluate(()=>STUDIO.objects.length===9&&STUDIO.world.count===956&&STUDIO.timeline.duration===8));
@@ -51,7 +51,7 @@ try{
  check('fixed edit-first / time-second workflow animates inside the opaque preview',await frame.evaluate(()=>STUDIO.selected.keys.length===2&&Math.abs(STUDIO.selected.root.rotation.y-Math.PI/4)<1e-6));
  await frame.locator('#open-ai').click();await frame.locator('#ai-example').click();if(await frame.locator('#ai-ack-row').isVisible())await frame.locator('#ai-ack').check();await frame.locator('#ai-play-after').uncheck();await frame.locator('#ai-apply').click();await frame.waitForFunction(()=>!document.querySelector('#ai-dialog').open);
  check('local AI command execution also works in the opaque file preview',await frame.evaluate(()=>STUDIO.timeline.duration===10&&STUDIO.objects.some(r=>r.name==='Bob the explorer'&&r.character.keys.length>70)));
- check('opaque preview does not fabricate Gemini API access',await frame.evaluate(()=>document.querySelector('#ai-key').value===''&&!document.querySelector('#ai-preview-note').hidden));
+ check('opaque preview has no API key interface',await frame.evaluate(()=>!document.querySelector('#ai-key')));
  await frame.locator('#duration').fill('2');await frame.locator('#duration').press('Tab');await frame.locator('#open-export').click();await frame.locator('#video-size').selectOption('640x360');await frame.locator('#video-format').selectOption('webm');await frame.locator('#record-audio').uncheck();await frame.locator('#rec').click();await frame.waitForFunction(()=>!STUDIO.video.busy,null,{timeout:120000});
  check('restricted preview can retain a locally rendered clip without an auto-download',await frame.evaluate(()=>!!STUDIO.video.result&&STUDIO.video.result.blob.size>1000&&!document.querySelector('#video-ready').hidden&&document.querySelector('#video-download').href.startsWith('blob:')));
  check('restricted preview still explains that its parent can block downloads',await frame.evaluate(()=>!document.querySelector('#sandbox-note').hidden&&document.querySelector('#sandbox-note').textContent.includes('block downloads')));

@@ -1,6 +1,6 @@
 # Bloxd Studio 4.0
 
-A small, local 3D animation editor with an editable **8-second Maple clearing**. Version 4.0 expands the public game asset library to 1,309 base block names / 4,032 block states, 1,110 item entries and 1,674 source-model choices. It retains reliable video downloads and direct shortest-path motion between saved poses. It keeps the optional **Gemini Director** that plans terrain, characters, item movement, camera travel and lighting using your own API key. Version 2.1’s keyframe fixes, original-color tool textures, manual editing, model imports and MP3 export are retained.
+A small, local 3D animation editor with an editable **8-second Maple clearing**. Version 4.0 expands the public game asset library to 1,309 base block names / 4,032 block states, 1,110 item entries and 1,674 source-model choices. It retains reliable video downloads and direct shortest-path motion between saved poses. It includes a local Code Editor and editable command-plan validator for scripts generated externally. Version 2.1’s keyframe fixes, original-color tool textures, manual editing, model imports and MP3 export are retained.
 
 ## 🌐 Live website
 
@@ -78,7 +78,7 @@ jobs:
 
 ## Open it locally
 
-Double-click **START-HERE.html** in Chrome, Edge or another modern desktop WebGL browser. The separately supplied **Bloxd-Studio-4.0.html** and **Bloxd-Studio.html** are identical. Manual editing assets/libraries are embedded; no install, account, CDN or internet connection is needed for the editor itself. **Gemini generation is optional and requires internet and your own Google API key.**
+Double-click **START-HERE.html** in Chrome, Edge or another modern desktop WebGL browser. The separately supplied **Bloxd-Studio-4.0.html** and **Bloxd-Studio.html** are identical. Manual editing assets/libraries are embedded; no install, account, CDN or internet connection is needed for the editor itself.
 
 The live preview also works. The embedded file viewer may block downloads: **download the HTML and open it in a browser to export or save projects**. There is no automatic persistent save—save a project before closing.
 
@@ -102,27 +102,15 @@ See **ASSET-LIBRARY.md**, **ASSET-CATALOG.csv** and **ASSET-COVERAGE.json** for 
 
 If you really want revolutions, select **Motion between saved poses → Full spins** for that object. Then 0° → 720° produces two turns. On a player, this setting covers its root, body-part and held-item keys together. The choice is undoable and saved with the project. Old projects without the setting now use shortest-path rotation by default; no authored keys are deleted.
 
-## Gemini Director
+## Local scripting and command plans
 
-1. Open the downloaded HTML in a full browser (or use the live app), then click **Gemini**.
-2. Enter your key in the password-style field. It stays in tab memory and is not saved in projects.
-3. Describe a scene, for example: **“Build a stone bridge, add another Bob with a diamond pickaxe, make him walk across and wave, orbit the camera and use sunset lighting.”**
-4. Click **Generate plan**. Review the commands and any replacement/removal warnings.
-5. **Apply & play** creates real editable objects and keys. One **Undo** restores the complete old scene.
-
-Gemini can fill/erase terrain, create rolling terrain, extract a terrain block for animation, add characters/items/props, equip and pose characters, bake walk/run/wave/mine/jump motion, set precise root/held-item keys, create camera travel and adjust lighting. Ground-aware walking follows voxel terrain heights. You can edit the result with all existing controls.
-
-**Google receives your prompt and a limited scene summary**, not actual textures, model files, skins or audio. API quota/charges can apply; no automatic retries. A generated plan is checked against a restricted command vocabulary, not executed as JavaScript. **Forget** clears the key. The embedded file preview can block Google requests; use the live app or downloaded file for real generation.
-
-**Try an offline command example** demonstrates the same command runner without a key. It is labeled as a local example, **not a Gemini response**.
-
-See **GEMINI-COMMANDS.md** for privacy/security details, supported operations, limits, the exact JSON format and troubleshooting. `gemini-command-schema.json` is the machine-readable schema. Live model quality/availability was not tested with a real key; browser integration tests use mocked Google responses.
+Open the Code Editor to paste a script created externally, validate it and apply editable scene data. Open **Local command plans** to paste or try a JSON command plan without a network connection. See [CODE-EDITOR.md](CODE-EDITOR.md) for the supported API, examples, update/replace behavior and limitations. No API key is required.
 
 ## Quick controls
 
 | What you want | What to click |
 |---|---|
-| Generate an animation with your Gemini key | **Gemini → describe → Generate plan → review → Apply & play** |
+| Run an externally generated script | **Code Editor → paste → Validate → Run** |
 | Add blocks | **Blocks → choose a texture → Place**, then click a block face |
 | Remove blocks | **Remove**, then ordinary left-click; right-click in Place mode also erases |
 | Rotate one block | **Select**, click the block, then **Rotate selected** or **E** |
@@ -220,7 +208,7 @@ Optional voxel conversion uses uniform cubes and works best on closed meshes. Fi
 
 ## Project compatibility and assets
 
-Version 4.0 saves blocks, object keys, held-item transforms, rotation-path settings, embedded audio, scene titles and optional pending edits. Old block IDs are retained through aliases. Projects using newly added assets need this expanded editor to reopen correctly. It retains the version-2 project format with an editor-version marker. Generated scenes need no key or internet to reopen. Gemini API credentials and request history are not saved. Version 1 projects can also be opened; legacy tool stands are separated into editable blocks during conversion. Project-file limit: 40 MB, 50,000 terrain cells and 1,000 scene objects.
+Version 4.0 saves blocks, object keys, held-item transforms, rotation-path settings, embedded audio, scene titles and optional pending edits. Old block IDs are retained through aliases. Projects using newly added assets need this expanded editor to reopen correctly. It retains the version-2 project format with an editor-version marker. Generated scenes need no key or internet to reopen. Version 1 projects can also be opened; legacy tool stands are separated into editable blocks during conversion. Project-file limit: 40 MB, 50,000 terrain cells and 1,000 scene objects.
 
 The full public default pack and expanded live/catalog mappings are included. Exact counts and the 13 unavailable/internal entries are documented in ASSET-LIBRARY.md. The Bob atlas/rig is still a separate reference-based recreation. See `CREDITS.md` and `assets/manifest.json` for exact provenance and rights notices. This is an unofficial fan-made editor.
 
@@ -249,7 +237,7 @@ Key source files:
 - `lib/video-export.js`: capability detection, exact-timestamp frame rendering, real-time fallback and container muxing.
 - `lib/key-edit.js`: per-channel pending edits, key snapshots and draft validation.
 - `lib/ai-commands.js`: command schema, planner instructions, safe compiler and offline example.
-- `lib/gemini-client.js`: fixed-origin Google API requests, model discovery, cancellation and error handling.
+- `lib/ai-panel.js`: local command-plan validation and review.
 - `lib/ai-panel.js`: key entry, prompt UI, command review and apply workflow.
 - `lib/audio.js`: local effects, audio import/mixing/preview and MP3 encoding.
 - `lib/importers.js`: model loaders and voxel conversion.

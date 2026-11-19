@@ -1,6 +1,6 @@
 {
   "title": "A little mining adventure",
-  "summary": "Offline command example — not a Gemini response. A second Bob walks along a wooden path, waves, and watches a rotating diamond pickaxe. Golden light and a camera dolly complete the shot.",
+  "summary": "Local command example. A second Bob walks along a wooden path, waves, and watches a rotating diamond pickaxe. Golden light and a camera dolly complete the shot.",
   "commands": [
     {
       "op": "duration",

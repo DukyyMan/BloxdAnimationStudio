@@ -23,7 +23,7 @@ import { chooseVideoConfig, renderVideoFrames, renderRealtimeVideo } from './lib
 import { buildTimeline, timelineAt, fitRect, sanitizeTrim, MAX_ASSEMBLY_SECONDS } from './lib/video-editor.js';
 import { Soundtrack } from './lib/audio.js';
 import { plainState, stageEdit, mergeEdit, keyFromState, stateFromKey, validateDraft } from './lib/key-edit.js';
-import { initGeminiPanel } from './lib/ai-panel.js';
+import { initCommandPanel } from './lib/ai-panel.js';
 import { initCodeStudio } from './lib/code-studio.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -1203,7 +1203,38 @@ async function main(){
   $('#live-motion').onchange=e=>{if(selected?.character){selected.character.live=e.target.checked;if(e.target.checked){selected.draft=null;updateKeyUI();}if(selected.character.preset==='custom')selected.character.preset='idle';selected.character.manual=true;}};
   $('#show-joints').onchange=e=>{if(selected?.character)selected.character.markers.visible=e.target.checked;};
   $('#onion-skin').onchange=e=>{state.onion=e.target.checked;try{localStorage.setItem('studioOnion',state.onion?'1':'0');}catch(err){}updateOnion();};
-  $$('[data-clip]').forEach(b=>b.onclick=()=>bakeClipInto(b.dataset.clip));
+  // A drop bakes ordinary timeline keys. Refuse overlaps instead of silently replacing
+  // manually authored work. The existing timeline/key editor and Undo remain authoritative.
+  const customStorage='studioCustomAnimationsV1';let customAnimations=[];
+  function validCustom(a){
+    const vector=v=>Array.isArray(v)&&v.length===3&&v.every(n=>Number.isFinite(n)&&Math.abs(n)<1000);
+    const transform=t=>t&&vector(t.position)&&vector(t.rotation)&&vector(t.scale)&&t.scale.every(n=>n>0);
+    if(!a||typeof a.name!=='string'||!a.name.trim()||a.name.length>80||typeof a.description!=='string'||a.description.length>240||!Number.isFinite(a.duration)||a.duration<=0||a.duration>60||!Array.isArray(a.keys)||a.keys.length<2||a.keys.length>1000)return false;
+    if(Math.abs(a.keys[0]?.time)>1e-6||Math.abs(a.keys.at(-1)?.time-a.duration)>1e-6)return false;
+    return a.keys.every((k,i)=>k&&Number.isFinite(k.time)&&k.time>=0&&k.time<=a.duration&&(!i||k.time>a.keys[i-1].time)&&transform(k)&&(!k.held||transform(k.held))&&k.pose&&typeof k.pose==='object'&&!Array.isArray(k.pose)&&Number.isFinite(k.pose.offset)&&Object.keys(JOINTS).every(j=>vector(k.pose[j]))&&Object.keys(k.pose).every(j=>j==='offset'||j in JOINTS));
+  }
+  try{const raw=localStorage.getItem(customStorage)||'[]';if(raw.length<2000000){const saved=JSON.parse(raw);if(Array.isArray(saved))customAnimations=saved.filter(validCustom).slice(0,50);}}catch(e){}
+  function customUI(){const el=$('#custom-animation-list');el.replaceChildren(new Option('Custom animations',''));customAnimations.forEach((a,i)=>el.add(new Option(a.name,String(i))));}
+  function persistCustom(){try{localStorage.setItem(customStorage,JSON.stringify(customAnimations));return true;}catch(e){toast('Could not save animations in browser storage.');return false;}}
+  function insertAnimation(name,start,custom=null){
+    const r=selected;if(!r?.character){toast('Select a character before dropping an animation.');return;}
+    if(r.draft){toast('Apply or revert the pending edit before adding animation.');return;}
+    const opts=bakeOptions(),dur=custom?custom.duration:(opts.duration||CLIP_DEFAULTS[name]?.dur);
+    if(!Number.isFinite(dur)||!Number.isFinite(start)||start<0||start+dur>timeline.duration+1e-6){toast('Animation must fit within the timeline. Extend duration first.');return;}
+    if(keysOf(r).some(k=>k.time>=start-KEY_EPS&&k.time<=start+dur+KEY_EPS)){toast('Animation overlaps existing keys. Choose an empty time range.');return;}
+    finishInputEdit();setPlaying(false);const before=trackSnapshot(r),stateAt=sampledState(r,start),base=stateAt.transform;
+    let generated;
+    if(custom){const origin=custom.keys[0].position;generated=custom.keys.map(k=>({...clone(k),time:start+k.time,position:k.position.map((n,i)=>base.position[i]+n-origin[i])}));}
+    else generated=bakeClip({clip:name,start,duration:dur,from:base.position,yaw:base.rotation[1],speed:opts.speed,direction:opts.direction}).keys;
+    for(const k of generated)putKey(keysOf(r),k);afterBakeFlags(r);bakeHistory('add '+(custom?.name||name)+' animation',[{r,before}]);seek(start,true);refreshTimeline();refreshInspector();toast('Added '+(custom?.name||name)+' as editable keys. Undo is available.');
+  }
+  $$('[data-clip]').forEach(b=>{b.onclick=()=>bakeClipInto(b.dataset.clip);b.draggable=true;b.addEventListener('dragstart',e=>{e.dataTransfer.setData('application/x-studio-animation',JSON.stringify({type:'builtin',name:b.dataset.clip}));e.dataTransfer.effectAllowed='copy';});});
+  const lane=$('#pose-track');lane.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('application/x-studio-animation')){e.preventDefault();e.dataTransfer.dropEffect='copy';lane.classList.add('animation-drop');}});lane.addEventListener('dragleave',()=>lane.classList.remove('animation-drop'));
+  lane.addEventListener('drop',e=>{lane.classList.remove('animation-drop');const raw=e.dataTransfer.getData('application/x-studio-animation');if(!raw)return;e.preventDefault();try{const data=JSON.parse(raw),rect=lane.getBoundingClientRect(),start=clamp((e.clientX-rect.left)/rect.width,0,1)*timeline.duration;if(data.type==='builtin'&&CLIP_DEFAULTS[data.name])insertAnimation(data.name,start);if(data.type==='custom'&&Number.isInteger(data.index)&&customAnimations[data.index])insertAnimation('',start,customAnimations[data.index]);}catch(err){toast('Invalid animation drop.');}});
+  $('#save-custom-animation').onclick=()=>{const r=selected;if(!r?.character){toast('Select a character first.');return;}const name=prompt('Name this animation:');if(!name?.trim())return;const range=prompt('Key range in seconds: start, end','0, '+timeline.duration);if(range===null)return;const bounds=range.split(',').map(Number);if(bounds.length!==2||!bounds.every(Number.isFinite)||bounds[0]<0||bounds[1]<=bounds[0]||bounds[1]>60){toast('Enter a valid start, end range.');return;}const keys=clone(keysOf(r).filter(k=>k.time>=bounds[0]-KEY_EPS&&k.time<=bounds[1]+KEY_EPS&&k.pose));if(keys.length<2){toast('The range needs at least two pose keys.');return;}const first=keys[0].time;keys.forEach(k=>k.time-=first);const description=prompt('Description (optional):','')??'';const item={name:name.trim().slice(0,80),description:description.slice(0,240),duration:keys.at(-1).time,keys};if(!validCustom(item)||customAnimations.length>=50){toast('Cannot save this key range.');return;}customAnimations.push(item);if(!persistCustom())customAnimations.pop();customUI();};
+  $('#custom-animation-add').onclick=()=>{const value=$('#custom-animation-list').value;if(value!=='')insertAnimation('',timeline.time,customAnimations[+value]);};
+  $('#custom-animation-delete').onclick=()=>{const value=$('#custom-animation-list').value;if(value!==''&&confirm('Delete this saved animation?')){customAnimations.splice(+value,1);persistCustom();customUI();}};
+  const customSelect=$('#custom-animation-list');customSelect.onchange=()=>{const item=customAnimations[+customSelect.value];customSelect.title=customSelect.value!==''&&item?item.description:'';};$('#custom-animation-drag').addEventListener('dragstart',e=>{if(customSelect.value===''){e.preventDefault();return;}e.dataTransfer.setData('application/x-studio-animation',JSON.stringify({type:'custom',index:+customSelect.value}));e.dataTransfer.effectAllowed='copy';});customUI();
   $('#pose-copy').onclick=copyPoseClip;$('#pose-paste').onclick=pastePoseClip;$('#pose-mirror').onclick=mirrorCurrentPose;
   $('#walk-path').onclick=()=>{if(state.pathMode){bakePath();return;}if(!bakeTargets(bakeOptions().all)){toast('Select a player first — or tick All chars — then draw the route.');return;}setPathMode(true);};
   $('#chain-mode').onclick=()=>{if(state.chainMode){bakeSequence();return;}setChainMode(true);};
@@ -2151,10 +2182,10 @@ async function main(){
     cinematicBuild,MAX_ZONE_BLOCKS};
   const codeBridge={catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS),textures:Object.keys(assetData.textures||{}).slice(0,1200)},snapshot:captureAIScene,apply:applyAIPlan,prepare:()=>{if(recording){toast('Stop recording first.');return false;}finishInputEdit();setPlaying(false);return true;}};
   window.STUDIO.code=initCodeStudio(codeBridge);
-  window.STUDIO.ai=initGeminiPanel({
+  window.STUDIO.ai=initCommandPanel({
     catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS),textures:Object.keys(assetData.textures||{}).slice(0,1200)},
     snapshot:captureAIScene,apply:applyAIPlan,canUndo:entry=>history.at(-1)===entry,undo,
-    prepare:()=>{if(recording){toast('Stop the recording before opening Gemini.');return false;}finishInputEdit();setPlaying(false);return true;},
+    prepare:()=>{if(recording){toast('Stop the recording before opening command plans.');return false;}finishInputEdit();setPlaying(false);return true;},
     play:()=>{applyPendingEdits();seek(0,true);setPlaying(true);}
   });
 }

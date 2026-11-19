@@ -1,8 +1,10 @@
-# Verified behavior — Bloxd Studio 4.0
+# Historical verification — Bloxd Studio 4.0
+
+This report records the 23 October 2026 release, not the current build. The Gemini integration described below has since been removed. See the current test scripts and CODE-EDITOR.md for the local scripting workflow.
 
 Verified on **23 October 2026** with real Playwright Chromium 156 / software-rendered WebGL. Downloaded media was inspected and decoded with FFmpeg/ffprobe 7.1.5. Those command-line tools are for QA only; the editor does not require them.
 
-## Current results
+## Results at that release
 
 | Suite | Result | Included report |
 |---|---:|---|
@@ -88,7 +90,7 @@ The prior first-late-key defect and edit-loss-on-scrub defect remain fixed. A bl
 
 Other checks include real rotation-ring drags; pending per-channel edits; automatic starting keys; Apply Undo/Redo; preserving unrelated animated channels; exact time entry; From start playback; pause-inspector synchronization; save/open; reversible Revert; nearby key spacing; retiming onto an occupied moment; legacy late-only tracks; and animated duplicate offsets. Bob's original unmentioned demo keys remain intact.
 
-## Gemini retained
+## Historical Gemini coverage (feature removed)
 
 The current HTTP-app suite rechecked model discovery, authenticated POST request structure, structured JSON schema, compatibility mode, privacy boundaries, review-before-apply, destructive-change acknowledgement, atomic batches, Undo/Redo, terrain and height maps, grounded actor motion, items, camera travel, lighting, scene titles, imported-model preservation, pending-edit preservation and save/open.
 

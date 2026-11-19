@@ -20,4 +20,4 @@ await writeFile(path.join(root,'START-HERE.html'),html);
 await writeFile(path.join(root,'Bloxd-Studio.html'),html);
 const version=JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).version.split('.').slice(0,2).join('.');
 await writeFile(path.join(root,`Bloxd-Studio-${version}.html`),html);
-console.log(`Built a fully self-contained editor: ${(Buffer.byteLength(html)/1024/1024).toFixed(2)} MB. Manual editing is offline; optional Gemini generation needs your key and internet.`);
+console.log(`Built a fully self-contained editor: ${(Buffer.byteLength(html)/1024/1024).toFixed(2)} MB. The editor and local scripting work offline.`);

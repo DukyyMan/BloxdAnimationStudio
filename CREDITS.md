@@ -62,12 +62,6 @@ Scene composition, terrain layout, tree assembly, separate block stands, lantern
 
 The built-in audio consists of **original, procedurally synthesized footsteps/mining-style effects**. It is not copied Bloxd audio, is not music, and is not automatically generated from arbitrary scene actions. Imported audio remains the user's responsibility. Audio processing and MP3 encoding happen locally in the browser.
 
-## Optional Gemini Director
-
-The browser client calls Google’s Gemini API directly using the user’s own key. No Google SDK, remote script, model weights or shared credentials are bundled. All scene command validation/execution is editor-authored local code. The fixed offline example is locally authored and is not presented as a Gemini generation.
-
-Google/Gemini names are used descriptively and remain associated with their owners. This is not an endorsed Google product. Google’s API terms, account access, quotas, billing and data-processing conditions apply to requests the user submits. See `GEMINI-COMMANDS.md` for references and privacy details.
-
 ## Video muxing and encoding orchestration: Mediabunny
 
 **Mediabunny 1.62.1**, copyright 2026-present Vanilagy and contributors, **Mozilla Public License 2.0**. The browser-native WebCodecs encoders perform actual encoding; no cloud video service or codec CDN is used.

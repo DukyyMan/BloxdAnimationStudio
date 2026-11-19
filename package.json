@@ -7,13 +7,13 @@
   "scripts": {
     "start": "python3 -m http.server 8000 --bind 0.0.0.0",
     "build": "node build.mjs",
-    "test": "node tests/studio.mjs && node tests/refinements.mjs && node tests/keyframe-fix.mjs && node tests/gemini.mjs && node tests/video-motion.mjs && node tests/catalog.mjs",
+    "test": "npm run test:code && node tests/studio.mjs && node tests/refinements.mjs && node tests/keyframe-fix.mjs && node tests/code-studio-browser.mjs && node tests/workspace-upgrade-browser.mjs && node tests/video-motion.mjs && node tests/catalog.mjs",
     "test:offline": "node tests/offline-v2.mjs",
-    "test:gemini": "node tests/gemini.mjs",
     "test:video": "node tests/video-motion.mjs",
     "test:catalog": "node tests/catalog.mjs",
     "test:code": "esbuild tests/code-studio-unit.mjs --bundle --platform=node --format=esm --alias:three=./vendor/three.module.js --outfile=node_modules/.code-studio-test.mjs && node node_modules/.code-studio-test.mjs",
-    "build:interpreter": "esbuild tools/script/interpreter.ts --bundle --format=esm --target=es2020 --outfile=lib/script-interpreter.js --legal-comments=inline"
+    "build:interpreter": "esbuild tools/script/interpreter.ts --bundle --format=esm --target=es2020 --outfile=lib/script-interpreter.js --legal-comments=inline",
+    "test:workspace": "node tests/workspace-upgrade-browser.mjs"
   },
   "devDependencies": {
     "acorn": "8.15.0",

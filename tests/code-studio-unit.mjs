@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { compileScript } from '../lib/code-studio.js';
+import { CODE_EXAMPLES } from '../lib/code-examples.js';
 
 const catalog={
   blocks:[{id:'grass',label:'Grass',solid:true},{id:'stone',label:'Stone',solid:true},{id:'sand',label:'Sand',solid:true},{id:'snow',label:'Snow',solid:true},{id:'dirt',label:'Dirt',solid:true}],
@@ -137,3 +138,31 @@ assert.equal(found.result.next.objects.length,1,'asset search results can be pla
 assert.equal(found.result.next.objects[0].options.asset,'Diamond Pickaxe');
 
 console.log('Code studio: editable generated data, meshes, terrain, attachments, materials, animated sun, fps, easing, replace-generated, asset search, preserved keys, rejected unsafe scripts.');
+
+// Seek validates input and clamps finite times to the current project duration.
+for (const [input, expected] of [[0,0],[4,4],[8,8],[-10,0],[99,8]]) {
+ const result=run(`async function main(api) { api.timeline.setPlayhead(${input}); }`);
+ assert.equal(result.result.next.timeline.time,expected);
+}
+for (const input of ['', '""', 'null', '"oops"', '1 / 0']) {
+ assert.throws(()=>run(`async function main(api) { api.timeline.setPlayhead(${input}); }`),/finite number/);
+}
+
+for (const example of CODE_EXAMPLES) assert.doesNotThrow(()=>run(example.code), example.name);
+
+const motionAgain=run(`async function main(api) { const h=await api.scene.addCharacter({id:"h"}); api.timeline.preset(h,"Walk",{time:0,duration:4}); }`,moved.result.next);
+assert.deepEqual(motionAgain.result.next.objects[0].character.keys,moved.result.next.objects[0].character.keys,'update preserves existing motion keys');
+assert.ok(motionAgain.skipped>0);
+assert.ok(run(`async function main(api) { const h=await api.scene.addCharacter({id:"h"}); api.timeline.preset(h,"Punch",{time:0,duration:1}); }`).result.warnings.some(w=>/legacy approximation/.test(w)));
+assert.throws(()=>run(`async function main(api) { await api.scene.addCharacter({id:"hero"}); await api.scene.addCharacter({id:"hero"}); }`,first.result.next),/Duplicate script ID/);
+
+const sunAgain=run(`async function main(api) { api.timeline.keySun({time:0,azimuth:10}); api.timeline.keySun({time:4,azimuth:20}); }`,timed.result.next);
+assert.equal(sunAgain.result.next.light.keys.find(k=>k.time===0).azimuth,-38,'update preserves existing sun key');
+assert.ok(sunAgain.result.next.light.keys.some(k=>k.time===4));
+const opacity=run(`async function main(api) { const b=api.scene.addAsset("stone",{id:"b"}); api.scene.setTransform(b,{opacity:.5}); }`);
+assert.equal(opacity.result.next.objects[0].options.material.opacity,.5);
+
+const cameraRotation=run(`async function main(api) { api.timeline.keyCamera({time:2,position:{x:0,y:1,z:5},rotation:{x:0,y:0,z:0}}); }`);
+assert.deepEqual(cameraRotation.result.next.camera.keys.find(k=>k.time===2).target,[0,1,4]);
+assert.throws(()=>run(`async function main(api) { const h=await api.scene.addCharacter({id:"h"}); api.timeline.preset(h,"Walk",{time:7,duration:2}); }`,moved.result.next),/fit within/);
+assert.throws(()=>run(`async function main(api) { api.timeline.setInterpolation("fast"); }`),/Supported: linear, smooth/);

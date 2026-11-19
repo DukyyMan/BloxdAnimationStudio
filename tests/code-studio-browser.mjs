@@ -28,7 +28,6 @@ try{
   check('code editor opens from the dock',await page.locator('#open-code').isVisible());
   await page.locator('#open-code').click();
   check('code dialog shows the supported API and a replace option',await page.locator('#code-dialog').isVisible()&&await page.locator('#code-replace').isVisible());
-  await page.locator('#code-example').click();
   await page.locator('#code-validate').click();
   const status=await page.locator('#code-status').textContent();
   check('the shipped example validates',status.startsWith('Valid'),status);
