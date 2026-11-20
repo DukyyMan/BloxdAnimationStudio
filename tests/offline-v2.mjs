@@ -4,7 +4,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),results=path.join(root,'tests/results'),html=fs.readFileSync(path.join(root,'START-HERE.html'),'utf8');
 const checks=[],errors=[],network=[];function check(name,pass,detail=''){checks.push({name,pass:!!pass,detail});console.log((pass?'PASS ':'FAIL ')+name+(detail?' — '+detail:''));}
-const browser=await launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});const context=await browser.newContext({viewport:{width:1440,height:900},offline:true,acceptDownloads:true});
+const browser=await launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});const context=await browser.newContext({deviceScaleFactor:Number(process.env.STUDIO_TEST_DPR||1),viewport:{width:1440,height:900},offline:true,acceptDownloads:true});
 function watch(page){page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});page.on('request',r=>{if(/^https?:/.test(r.url()))network.push(r.url());});}
 try{
  const page=await context.newPage();watch(page);await page.addInitScript(()=>localStorage.setItem('studioDevice','desktop'));

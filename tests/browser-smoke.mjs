@@ -5,7 +5,7 @@ const url=process.argv[2]||'http://127.0.0.1:8000/';
 let browser;
 try{
   browser=await launch({args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-dev-shm-usage']});
-  const page=await browser.newPage({viewport:{width:1280,height:820}});
+  const page=await browser.newPage({deviceScaleFactor:Number(process.env.STUDIO_TEST_DPR||1),viewport:{width:1280,height:820}});
   const errors=[];
   page.on('pageerror',e=>errors.push('PAGEERROR '+e.message));
   page.on('console',m=>{if(m.type()==='error')errors.push('CONSOLE '+m.text());});

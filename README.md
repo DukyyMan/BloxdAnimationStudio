@@ -251,3 +251,5 @@ For regression tests, install Chromium with `npx playwright install --with-deps 
 ### Script authoring workflow
 
 **AI Prompt Builder** in the studio header creates a complete brief for an external AI chat, without an account, key or network request. The **Code Editor → Error Inspector** lists detected errors and warnings, links located errors to their source and copies debugging reports. Try **Clearing with a stone house** in the Example library for inclusive block fills and manual editing. The dock’s **Tour** button offers three restartable walkthroughs. See the [local scripting reference](CODE-EDITOR.md) for exact commands and terrain update/replace behavior.
+
+For browser QA on CPU-only machines, start `npm start` in another terminal and run `STUDIO_TEST_DPR=0.5 npm test` or `STUDIO_TEST_DPR=0.5 npm run test:offline`. This reduces the test browser’s device pixel density; the CSS viewport, assertions and requested video export resolution do not change.
