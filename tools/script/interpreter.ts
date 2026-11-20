@@ -7,13 +7,15 @@ const limits = { code: 64000 };
 type Node = any;
 type Value = unknown;
 export class ScriptError extends Error {
-  line: number;
-  column: number;
+  line?: number;
+  endLine?: number;
+  column?: number;
+  category = 'Validation';
   constructor(message: string, loc?: { line: number; column: number }) {
     super(message);
     this.name = 'ScriptError';
-    this.line = loc?.line ?? 1;
-    this.column = (loc?.column ?? 0) + 1;
+    this.line = loc?.line;
+    this.column = loc && loc.column + 1;
   }
 }
 const blocked = new Set([
@@ -62,7 +64,7 @@ const binaries = new Set(['+', '-', '*', '/', '%', '**', '===', '!==', '==', '!=
 const assignments = new Set(['=', '+=', '-=', '*=', '/=', '%=', '**=']);
 const loc = (n: Node) => n?.loc?.start;
 const fail = (n: Node, message: string): never => {
-  throw new ScriptError(message, loc(n));
+  throw Object.assign(new ScriptError(message, loc(n)), { endLine: n?.loc?.end.line });
 };
 const functions = new WeakMap<object, (args: Value[]) => Value>();
 export function native(call: (args: Value[]) => Value) {
@@ -105,7 +107,7 @@ export function interpret(
   code: string,
   api: unknown,
   math: unknown,
-  options: { maxSteps?: number; maxMs?: number } = {},
+  options: { maxSteps?: number; maxMs?: number; onCall?: (location: any) => void; onDiagnostic?: (error: ScriptError) => void } = {},
 ): number {
   if (code.length > limits.code)
     throw new ScriptError(`Script exceeds ${limits.code.toLocaleString()} characters.`);
@@ -115,28 +117,34 @@ export function interpret(
     ast = parse(code, { ecmaVersion: 2022, locations: true, sourceType: 'script' });
   } catch (e) {
     const err = e as Error & { loc?: { line: number; column: number } };
-    throw new ScriptError(err.message.replace(/\s*\(\d+:\d+\)$/, ''), err.loc);
+    throw Object.assign(new ScriptError(err.message.replace(/\s*\(\d+:\d+\)$/, ''), err.loc), {category:'Syntax'});
   }
   let nodes = 0;
+  const staticErrors: ScriptError[] = [];
+  function reject(n: Node, message: string) {
+    const error=Object.assign(new ScriptError(message, loc(n)), {endLine:n.loc.end.line});
+    staticErrors.push(error);
+    if (staticErrors.length >= 50) throw Object.assign(Error('Static diagnostic limit reached.'),{diagnostics:staticErrors});
+  }
   function check(n: Node, depth: number) {
     if (!n?.type) return;
     if (++nodes > 16000 || depth > 90) fail(n, 'Script structure is too large or deeply nested.');
     if (!safeNodes.has(n.type))
-      fail(n, `${n.type.replace(/([a-z])([A-Z])/g, '$1 $2')} is not supported in Studio scripts.`);
+      return reject(n, `${n.type.replace(/([a-z])([A-Z])/g, '$1 $2')} is not supported in Studio scripts.`);
     if (n.type === 'Identifier' && (forbidden.has(n.name) || blocked.has(n.name)))
-      fail(n, `“${n.name}” is not available in Studio scripts.`);
+      return reject(n, `“${n.name}” is not available in Studio scripts.`);
     if (n.type === 'Literal' && (n.regex || n.bigint !== undefined))
-      fail(n, 'Regular expressions and BigInt are not supported.');
+      return reject(n, 'Regular expressions and BigInt are not supported.');
     if (n.type === 'Property' && (n.kind !== 'init' || n.method))
-      fail(n, 'Object literals support data properties only.');
+      return reject(n, 'Object literals support data properties only.');
     if (n.type === 'BinaryExpression' && !binaries.has(n.operator))
-      fail(n, `Operator “${n.operator}” is not supported.`);
+      return reject(n, `Operator “${n.operator}” is not supported.`);
     if (n.type === 'AssignmentExpression' && !assignments.has(n.operator))
-      fail(n, `Assignment “${n.operator}” is not supported.`);
+      return reject(n, `Assignment “${n.operator}” is not supported.`);
     if (n.type === 'UnaryExpression' && !['+', '-', '!', 'typeof'].includes(n.operator))
-      fail(n, `Operator “${n.operator}” is not supported.`);
-    if (n.type === 'VariableDeclaration' && n.kind === 'var') fail(n, 'Use let or const, not var.');
-    if (n.generator) fail(n, 'Generator functions are not supported.');
+      return reject(n, `Operator “${n.operator}” is not supported.`);
+    if (n.type === 'VariableDeclaration' && n.kind === 'var') return reject(n, 'Use let or const, not var.');
+    if (n.generator) return reject(n, 'Generator functions are not supported.');
     for (const [key, child] of Object.entries(n))
       if (
         !['loc', 'start', 'end', 'value', 'raw'].includes(key) ||
@@ -147,6 +155,7 @@ export function interpret(
       }
   }
   check(ast, 0);
+  if(staticErrors.length) throw Object.assign(new ScriptError(staticErrors[0].message),{diagnostics:staticErrors});
   if (
     ast.body.some(
       (n: Node) => !['FunctionDeclaration', 'VariableDeclaration', 'EmptyStatement'].includes(n.type),
@@ -166,7 +175,7 @@ export function interpret(
     entry.params[0].type !== 'Identifier' ||
     entry.params[0].name !== 'api'
   )
-    fail(entry ?? ast, 'Define async function main(api) as the entry point.');
+    fail(entry?.id, 'Define async function main(api) as the entry point.');
 
   let steps = 0,
     memory = 0,
@@ -288,6 +297,7 @@ export function interpret(
       if (bridge) {
         tick(n, 10);
         try {
+          options.onCall?.({line:n.loc.start.line, column:n.loc.start.column + 1, endLine:n.loc.end.line});
           const result = bridge(args);
           if (Array.isArray(result)) {
             tick(n, result.length || 1);
@@ -296,7 +306,7 @@ export function interpret(
           return result;
         } catch (e) {
           if (e instanceof ScriptError) throw e;
-          return fail(n, e instanceof Error ? e.message : String(e));
+          throw Object.assign(new ScriptError(e instanceof Error ? e.message : String(e),loc(n)),{endLine:n.loc.end.line,category:'API validation'});
         }
       }
       const user = userFns.get(f);
@@ -490,8 +500,16 @@ export function interpret(
     for (const n of list)
       if (n.type === 'FunctionDeclaration') env.declare(n.id.name, fn(n, env), false, n);
     for (const n of list) {
-      const j = statement(n, env);
-      if (j) return j;
+      try {
+        const j = statement(n, env);
+        if (j) return j;
+      } catch (error) {
+        // Recover only at an outer main statement boundary. Never resume a
+        // failed loop/function or bypass interpreter resource limits.
+        if (list !== entry.body.body || !options.onDiagnostic || !(error instanceof ScriptError) || /limit|too many|too large/i.test(error.message)) throw error;
+        if(error.category==='Validation')error.category='Runtime (dry run)';
+        options.onDiagnostic(error);
+      }
     }
   }
   function statement(n: Node, env: Scope): Jump | undefined {

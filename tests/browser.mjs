@@ -37,6 +37,8 @@ export {chromium};
 // library, inspector and timeline controls directly, so boot opens all three and
 // answers the first-run device question the way a desktop user would.
 export async function boot(page,url){
+  // Optional lower device density for software-rendered CI. CSS viewport and export sizes stay unchanged.
+  if(process.env.STUDIO_TEST_DPR){const session=await page.context().newCDPSession(page);await session.send('Emulation.setDeviceMetricsOverride',{...page.viewportSize(),mobile:false,deviceScaleFactor:Number(process.env.STUDIO_TEST_DPR)});}
   await page.addInitScript(()=>{try{localStorage.setItem('studioDevice','desktop');}catch(e){}});
   await page.goto(url||process.env.APP_URL||'http://127.0.0.1:8000/',{waitUntil:'load',timeout:60000});
   await page.waitForFunction(()=>window.STUDIO?.ready,null,{timeout:90000});

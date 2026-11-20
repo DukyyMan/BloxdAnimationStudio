@@ -247,3 +247,7 @@ Key source files:
 The LGPL MP3 library is replaceable. Its only local changes are an attribution comment and ESM export. Extract `vendor/lamejs-1.2.1-source.tgz`, modify or replace `vendor/lamejs.js`, and run `npm run build` to relink the standalone editor. The full application source is included; no restriction is imposed on reverse engineering for debugging modifications to the LGPL library.
 
 For regression tests, install Chromium with `npx playwright install --with-deps chromium`, start the server above, then run `npm test`. Run `npm run build && npm run test:offline` for file/offline/sandbox checks. `npm run test:video` uses `ffprobe` / `ffmpeg` (QA only) to decode and inspect the actual video downloads. See `TESTED.md` for the actual verified results.
+
+### Script authoring workflow
+
+**AI Prompt Builder** in the studio header creates a complete brief for an external AI chat, without an account, key or network request. The **Code Editor → Error Inspector** lists detected errors and warnings, links located errors to their source and copies debugging reports. Try **Clearing with a stone house** in the Example library for inclusive block fills and manual editing. The dock’s **Tour** button offers three restartable walkthroughs. See the [local scripting reference](CODE-EDITOR.md) for exact commands and terrain update/replace behavior.

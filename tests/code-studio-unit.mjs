@@ -166,3 +166,34 @@ const cameraRotation=run(`async function main(api) { api.timeline.keyCamera({tim
 assert.deepEqual(cameraRotation.result.next.camera.keys.find(k=>k.time===2).target,[0,1,4]);
 assert.throws(()=>run(`async function main(api) { const h=await api.scene.addCharacter({id:"h"}); api.timeline.preset(h,"Walk",{time:7,duration:2}); }`,moved.result.next),/fit within/);
 assert.throws(()=>run(`async function main(api) { api.timeline.setInterpolation("fast"); }`),/Supported: linear, smooth/);
+
+// Diagnostics keep exact call sites through the VM and deferred key/command compiler.
+const issues=body=>{try{run(`async function main(api) {\n${body}\n}`);}catch(e){return e.diagnostics||[e];}throw Error('Expected diagnostics');};
+let problems=issues('api.scene.get("absent"); api.scene.get("other");\napi.timeline.setFPS(0);\napi.timeline.setInterpolation("fast");');
+assert.deepEqual(problems.map(e=>[e.line,e.command]),[[2,undefined],[2,undefined],[3,1],[4,2]]);
+assert.ok(problems[0].column<problems[1].column);
+problems=issues('api.timeline.keyCamera({time:2,fov:1});\napi.timeline.keyCamera({time:3,fov:500});');
+assert.deepEqual(problems.map(e=>[e.line,e.command]),[[2,1],[3,1]]);
+assert.equal(issues('api.timeline.setDuration(65);')[0].line,2);
+assert.equal(issues('api.terrain.fill({\nfrom:{}, to:{}, blockName:"absent"\n});')[0].endLine,4);
+assert.throws(()=>run(' '.repeat(64001)),e=>!e.line,'no invented source line for size limit');
+assert.equal(issues('const a = ;')[0].category,'Syntax');
+const cells={...base,world:{...base.world,blocks:[['0,0,0','snow'],['49,2,49','dirt']]}};
+const script=(body,snap=cells)=>run(`async function main(api){${body}}`,snap).result.next;
+const gen='api.terrain.generate({width:4,depth:4,biome:"desert",amplitude:0,decorate:false});';
+assert.equal(new Map(script(gen).world.blocks).get('0,0,0'),'snow');
+const regenerated=new Map(script('api.project.setGeneratedMode("replace");'+gen).world.blocks);
+assert.equal(regenerated.get('0,0,0'),'sand');assert.equal(regenerated.get('49,2,49'),'dirt');
+const shell=new Map(script('api.terrain.clear();api.terrain.fill({from:{},to:{x:2,y:2,z:2},blockName:"stone",hollow:true});').world.blocks);
+assert.equal(shell.size,26);assert.ok(!shell.has('1,1,1'));
+assert.equal(new Map(script('api.terrain.setBlock({x:0,y:0,z:0,blockName:"grass"});').world.blocks).get('0,0,0'),'grass');
+assert.equal(script('api.terrain.clear();').world.blocks.length,0);
+assert.equal(script('const items=api.assets.search("",{category:"item",limit:1});api.scene.addAsset(items[0],{id:"pick"});').objects[0].type,'tool');
+console.log('PASS located multi-diagnostics, grouped keys, fill bounds, generation modes, catalog filtering and every library example.');
+assert.deepEqual(issues('var x=1;\nvar y=2;').map(e=>e.line),[2,3]);
+assert.equal(issues('let n=missingVariable;')[0].category,'Runtime (dry run)');
+const survivor=script('const one=api.scene.addAsset("stone",{id:"discard"});api.scene.remove(one);api.scene.addCharacter({id:"survivor"});');
+assert.equal(survivor.objects[0].options.scriptId,'survivor');
+assert.deepEqual(run('async function main(api){\napi.terrain.clear();\n}').warningDetails.map(d=>[d.line,d.command]),[[2,1]]);
+assert.throws(()=>script('api.terrain.fill({from:{},to:{x:55},blockName:"stone"});'),/Box end/);
+assert.throws(()=>script('api.terrain.fill({from:{},to:{x:50,y:50,z:50},blockName:"stone"});'),/too large/);

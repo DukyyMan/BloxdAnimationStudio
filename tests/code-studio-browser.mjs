@@ -58,10 +58,13 @@ try{
   check('a manual key can be added to a generated mesh',!!manualKey&&Math.abs(manualKey.rotation[1]-Math.PI/3)<1e-6,JSON.stringify(manualKey));
 
   // ── Update-by-id preserves manual edits; replace rebuilds ──
+  // A manual cell in the generated footprint survives update, but not explicit regeneration.
+  await get(()=>{STUDIO.world.set(0,0,0,'snow');STUDIO.world.rebuild();});
   const updateStatus=await applyScript(await page.locator('#code-source').inputValue());
   check('re-running in update mode preserves the manual key',updateStatus.includes('existing keys preserved')&&await page.evaluate(id=>{const r=STUDIO.objects.find(o=>o.id===id);return r.keys.some(k=>Math.abs(k.time-5)<1e-6);},meshId),updateStatus);
   check('update mode does not duplicate the generated pose keys',await get(()=>{const h=STUDIO.objects.find(o=>o.options?.scriptId==='hero');return h.character.keys.filter(k=>Math.abs(k.time-1)<1e-6).length===1;}));
 
+  check('update generation preserves a manual cell',await get(()=>STUDIO.world.get(0,0,0)==='snow'));
   const replaceStatus=await applyScript((await page.locator('#code-source').inputValue()).replace(/project\.setGeneratedMode\("update"\);/,''),{replace:true});
   check('replace mode reports the rebuild',replaceStatus.includes('replace generated'),replaceStatus);
   check('replace mode keeps the same generated object ids',await get(()=>STUDIO.objects.filter(o=>o.options?.scriptId).length===2));
@@ -74,8 +77,9 @@ try{
   check('animated sun keys drive the actual lighting',Math.abs(sunStart.az+38)<.5&&Math.abs(sunEnd.az-120)<.5,JSON.stringify({sunStart,sunEnd}));
 
   // ── Terrain cells are ordinary editable voxels ──
-  const painted=await get(()=>{const before=STUDIO.world.count;const r=STUDIO.addProp('block',new STUDIO.THREE.Vector3(3,3,3),{block:'stone'});STUDIO.select(r);return before;});
-  check('generated terrain coexists with normal scene objects',painted===after.blocks);
+  check('replace regenerates the requested region',await get(()=>STUDIO.world.get(0,0,0)!=='snow'));
+  const painted=await get(()=>{const before=new Map(STUDIO.world.map);const r=STUDIO.addProp('block',new STUDIO.THREE.Vector3(3,3,3),{block:'stone'});STUDIO.select(r);return STUDIO.selected===r&&before.size===STUDIO.world.count&&[...before].every(([k,v])=>STUDIO.world.map.get(k)===v);});
+  check('generated terrain coexists with normal scene objects',painted);
 
   // ── Save / reload keeps generated data editable ──
   await page.locator('#open-project-menu').click();
