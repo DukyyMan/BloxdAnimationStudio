@@ -1,3 +1,4 @@
+import './tools/script/reference.mjs';
 import {build} from 'esbuild';
 import {readFile,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';

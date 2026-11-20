@@ -24,6 +24,8 @@ import { buildTimeline, timelineAt, fitRect, sanitizeTrim, MAX_ASSEMBLY_SECONDS 
 import { Soundtrack } from './lib/audio.js';
 import { plainState, stageEdit, mergeEdit, keyFromState, stateFromKey, validateDraft } from './lib/key-edit.js';
 import { initCommandPanel } from './lib/ai-panel.js';
+import { initPromptBuilder } from './lib/prompt-builder.js';
+import { initTours } from './lib/studio-tour.js';
 import { initCodeStudio } from './lib/code-studio.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -1640,6 +1642,8 @@ async function main(){
       if(spec.opacity!==undefined){m.opacity=spec.opacity;m.transparent=m.transparent||spec.opacity<1;}
       if(spec.emissive!==undefined){m.emissive.set(spec.emissive);m.emissiveIntensity=spec.emissiveIntensity??1;}
       if(spec.texture!==undefined){const tex=textures[spec.texture];if(tex){m.map=tex;m.needsUpdate=true;}}
+      if(spec.transparent!==undefined)m.transparent=spec.transparent;
+      if(spec.emissiveIntensity!==undefined)m.emissiveIntensity=spec.emissiveIntensity;
       if(spec.flatShading!==undefined)m.flatShading=spec.flatShading;
       if(spec.wireframe!==undefined)m.wireframe=spec.wireframe;
       m.needsUpdate=true;
@@ -2104,7 +2108,7 @@ async function main(){
   updateLight();syncLightUI();syncAudioUI();selectObject(bob);showInspector('object');refreshAll();syncFov();historyUI();
   const clock=new THREE.Clock();let timeSinceStart=0,waterClock=0;
   function animate(){
-    requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.25),aiOpen=$('#ai-dialog').open;frames++;if(recording)return;timeSinceStart+=dt;waterClock=timeline.playing?timeline.time:waterClock+dt;setWaterTime(waterClock);if(!timeline.playing)updateAssetAnimations(timeSinceStart);
+    requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.25),aiOpen=$('#ai-dialog').open;frames++;if(recording||(!timeline.playing&&($('#code-dialog').open||$('#prompt-dialog').open)))return;timeSinceStart+=dt;waterClock=timeline.playing?timeline.time:waterClock+dt;setWaterTime(waterClock);if(!timeline.playing)updateAssetAnimations(timeSinceStart);
     if(timeline.playing){
       const now=performance.now();timeline.time+=Math.max(0,(now-playbackLast)/1000);playbackLast=now;
       if(timeline.time>=timeline.duration){
@@ -2182,6 +2186,8 @@ async function main(){
     cinematicBuild,MAX_ZONE_BLOCKS};
   const codeBridge={catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS),textures:Object.keys(assetData.textures||{}).slice(0,1200)},snapshot:captureAIScene,apply:applyAIPlan,prepare:()=>{if(recording){toast('Stop recording first.');return false;}finishInputEdit();setPlaying(false);return true;}};
   window.STUDIO.code=initCodeStudio(codeBridge);
+  const prompts=initPromptBuilder(codeBridge.catalog);
+  initTours({prompts,code:window.STUDIO.code,syncDock,resize});
   window.STUDIO.ai=initCommandPanel({
     catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS),textures:Object.keys(assetData.textures||{}).slice(0,1200)},
     snapshot:captureAIScene,apply:applyAIPlan,canUndo:entry=>history.at(-1)===entry,undo,
