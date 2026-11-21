@@ -10,12 +10,12 @@ const get=fn=>page.evaluate(fn);
 async function input(id,v){await page.locator(id).evaluate((el,v)=>{el.focus();el.value=String(v);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));},v);}
 async function save(selector,name){const promise=page.waitForEvent('download',{timeout:90000});await page.locator(selector).click();const d=await promise,p=path.join(out,name);await d.saveAs(p);return p;}
 async function screen(p){return page.evaluate(p=>{STUDIO.scene.updateMatrixWorld(true);STUDIO.camera.updateMatrixWorld();const v=new STUDIO.THREE.Vector3(...p).project(STUDIO.camera),r=document.querySelector('#scene').getBoundingClientRect();return{x:r.x+(v.x+1)*r.width/2,y:r.y+(1-v.y)*r.height/2};},p);}
-async function clickWorld(p){const q=await screen(p);await page.mouse.click(q.x,q.y);}
+async function clickWorld(p){const q=await screen(p);const covered=await page.evaluate(({x,y})=>!!document.elementFromPoint(x,y)?.closest('.dock'),q);if(covered){await get(()=>document.body.classList.remove('panel-timeline'));await page.waitForTimeout(300);}await page.mouse.click(q.x,q.y);if(covered){await get(()=>document.body.classList.add('panel-timeline'));await page.waitForTimeout(300);}}
 async function reset(starter){await page.evaluate(d=>STUDIO.loadProject(d),starter);await get(()=>STUDIO.frameScene());}
 try{
  await boot(page);
  const starter=await get(()=>STUDIO.projectData());
- check('v2 starter boots and stores v2 project data',starter.version===2&&starter.objects.length===9);
+ check('starter boots and stores versioned v3 project data',starter.version===3&&starter.objects.length===9);
  check('Place and Remove are visible, separate buttons',await page.locator('#place-blocks').isVisible()&&await page.locator('#erase-blocks').isVisible());
  check('original pickaxe texture is visible in the inspector',(await page.locator('#texture-filename').textContent())==='diamond_pickaxe.png');
  const assets=await get(()=>{const B=STUDIO;const names=['Wood','Stone','Iron','Gold','Diamond'].flatMap(m=>['Pickaxe','Sword','Axe','Spade','Hoe'].map(t=>m+' '+t)).concat(['Moonstone Pickaxe','Moonstone Axe','Shears','Artisan Shears','Wood Bow','Diamond Spear','Diamond Dagger']);return names.map(name=>{let mesh;const item=B.makeTool(name);item.traverse(o=>{if(o.isMesh)mesh=o;});return{name,mapped:!!mesh.material.map,nearest:mesh.material.map.magFilter===B.THREE.NearestFilter,unlit:mesh.material.isMeshBasicMaterial&&!mesh.material.toneMapped,thin:mesh.geometry.userData.thickness<.5,pixels:mesh.geometry.userData.opaquePixels,file:mesh.userData.toolTexture};});});

@@ -1,6 +1,19 @@
-# Bloxd Studio 4.0
+# Bloxd Studio 4.2
 
 A small, local 3D animation editor with an editable **8-second Maple clearing**. Version 4.0 expands the public game asset library to 1,309 base block names / 4,032 block states, 1,110 item entries and 1,674 source-model choices. It retains reliable video downloads and direct shortest-path motion between saved poses. It includes a local Code Editor and editable command-plan validator for scripts generated externally. Version 2.1’s keyframe fixes, original-color tool textures, manual editing, model imports and MP3 export are retained.
+
+## 4.2 — save, camera workspace and long timelines
+
+- **Save Project** downloads an editable `.bloxd.json`, not a video. **Save as / download copy** names a new copy. The header shows unsaved changes; loading a different project or closing the tab warns before discarding edits.
+- Project format **v3** preserves old v1/v2 data and additionally stores independent editor navigation, camera guide preferences, timeline zoom/scroll/Follow, part selection, live-preset speed and imported-clip playback state. All pose/camera keys, easing, detached joints, terrain and embedded art remain editable.
+- A validated, atomic **15-second browser recovery** snapshot is available from Project → Restore autosave. It does not clear the unsaved indicator. Download JSON for a portable backup; browser storage can be unavailable or cleared.
+- The viewport **camera mode selector** switches between **First-person camera** and **Camera object / Scene view**. Scene view has its own navigation camera. Click the cyan animation-camera body (or **Edit camera**) to move/rotate it using the existing handles, then **Key camera**. The Camera inspector can hide its body/frustum guides. Guides use a bounded preview depth to avoid clutter.
+- **N / compass** toggles fly mode for the current viewport camera: WASD, Space/E up, Q/C down, Shift faster, drag to look. Click the viewport to activate it. Releasing keys, focus loss or typing stops movement immediately. In scene view these keys move the editor camera, not the animation camera; use Edit camera to change the latter.
+- Scrubbing always evaluates the animation camera alongside every actor, even outside the Camera inspector. Camera keys interpolate position, orientation and FOV; explicit Hold keys cut rather than travel. **Exports always render the animation camera**, never scene-view navigation.
+- The timeline now has a real horizontal scrollbar, **− / + / slider / Fit**, wheel scrolling and Ctrl/Cmd+wheel zoom. Zoom anchors around the visible playhead (or viewport centre). **Follow** keeps the playing head onscreen and can be disabled. Duration supports **2–7,200 seconds**; the default remains eight seconds. Keys beyond a shortened duration remain saved. Ruler labels and dense key tracks are viewport-limited.
+- **Authentic mobs remain blocked:** no verified anatomical mob rig was available from the inspected sources. No invented mobs were added. See [MOBS.md](MOBS.md) and `assets/mob-audit.json` for the 59-type audit, including the genuine but unrigged `67.glb`.
+
+Build with `npm run build`; test with the local server running (`npm start`), then `npm run test:upgrade`. `npm run test:mobs` reproduces the offline asset audit. See `UPGRADE-REPORT.md` for implementation/testing details. These branch changes have **not** been deployed to the public site below.
 
 ## 🌐 Live website
 

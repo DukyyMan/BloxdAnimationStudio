@@ -58,6 +58,9 @@ try{
   await still();const t0=await get(()=>STUDIO.camera.position.toArray());await page.locator('#asset-search').focus();await page.keyboard.down('w');await frames(3);await page.keyboard.up('w');await frames(2);
   check('typing in a text field does not fly the camera',await get(p=>STUDIO.camera.position.distanceTo(new STUDIO.THREE.Vector3(...p))<1e-6,t0)&&(await page.locator('#asset-search').inputValue()).includes('w'));
   await page.locator('#asset-search').fill('');await clean();
+  // Seeking now evaluates the camera even outside the Camera inspector. Choose
+  // the key time before navigating, rather than expecting a seek to keep a free view.
+  await time(5);
   // Mouse look: drag up → pitch up, clamped below 90°, never flips.
   const c=await screen([0,1,0]);const sceneBox=await page.locator('#scene').boundingBox();const cx=sceneBox.x+sceneBox.width/2,cy=sceneBox.y+sceneBox.height/2;
   const a0=await get(()=>STUDIO.nav.angles());
@@ -71,7 +74,7 @@ try{
   await get(()=>{const a=STUDIO.nav.angles();STUDIO.nav.lookBy(0,0);});
   await page.mouse.move(cx,cy);await page.mouse.down();await page.mouse.move(cx,cy+120,{steps:6});await page.mouse.up();
   const keyed=await get(()=>STUDIO.nav.angles());
-  await time(5);await page.keyboard.press('Shift+K');
+  await page.keyboard.press('Shift+K');
   const camKey=await get(()=>STUDIO.camTrack.keys.find(k=>Math.abs(k.time-5)<1e-3));
   check('Shift+K stores a camera key while flying',!!camKey);
   await page.keyboard.press('n');check('N leaves navigation mode and restores orbit',await get(()=>!STUDIO.nav.active&&STUDIO.orbit.enabled));
@@ -252,7 +255,7 @@ try{
   const blocks0=await get(()=>STUDIO.world.map.size);
   // Pick two points on open ground in the visible part of the viewport (between the side panels).
   const ground=await get(()=>{const r=document.querySelector('#scene').getBoundingClientRect(),lib=document.querySelector('.library').getBoundingClientRect(),ins=document.querySelector('.inspector').getBoundingClientRect();
-    const hitAt=(x,y)=>{const h=STUDIO.sceneHit({clientX:x,clientY:y});return h&&h.face&&h.face.normal.y>.9&&!STUDIO.objects.some(o=>{let q=h.object;while(q){if(q===o.root)return true;q=q.parent;}return false;})?h.point.toArray():null;};
+    const hitAt=(x,y)=>{if(document.elementFromPoint(x,y)!==document.querySelector('#scene'))return null;const h=STUDIO.sceneHit({clientX:x,clientY:y});return h&&h.face&&h.face.normal.y>.9&&!STUDIO.objects.some(o=>{let q=h.object;while(q){if(q===o.root)return true;q=q.parent;}return false;})?h.point.toArray():null;};
     for(let y=r.bottom-260;y>r.top+180;y-=10)for(let x=lib.right+80;x<ins.left-200;x+=12){const a=hitAt(x,y),b=hitAt(x+90,y+40);if(a&&b&&Math.abs(a[1]-b[1])<.01)return{from:{x,y},to:{x:x+90,y:y+40},a,b};}return null;});
   const from=ground.from,to=ground.to;
   await page.mouse.move(from.x,from.y);await page.mouse.down();await page.mouse.move(to.x,to.y,{steps:8});

@@ -99,12 +99,16 @@ try{
   await page.evaluate(data=>STUDIO.loadProject(data),starter);await get(()=>STUDIO.frameScene());
   await page.locator('[data-library="blocks"]').click();await page.locator('#asset-grid .asset-card[title="Grass Block"]').click();
   const screenPoint=async p=>page.evaluate(p=>{const B=STUDIO;B.camera.updateMatrixWorld();const v=new B.THREE.Vector3(...p).project(B.camera),r=document.querySelector('#scene').getBoundingClientRect();return{x:r.left+(v.x+1)*r.width/2,y:r.top+(1-v.y)*r.height/2};},p);
+  // The taller timeline moves the floating dock over this historical world point.
+  // Close that panel while making real canvas clicks, then restore it for key editing.
+  await get(()=>document.body.classList.remove('panel-timeline'));await page.waitForTimeout(300);
   const before=await get(()=>STUDIO.world.count),pt=await screenPoint([5.5,1.001,4.5]);await page.mouse.click(pt.x,pt.y);
   check('real canvas click places the adjacent block',await get(()=>STUDIO.world.get(5,1,4)==='grass'));
   check('placing adds exactly one block',await get(()=>STUDIO.world.count)===before+1);
   const pt2=await screenPoint([5.5,2.001,4.5]);await page.mouse.click(pt2.x,pt2.y,{button:'right'});
   check('right-click erases the hit block, not the neighbouring cell',await get(()=>!STUDIO.world.get(5,1,4)&&STUDIO.world.get(5,0,4)==='grass'));
   await page.locator('#undo').click();check('undo restores a dug block',await get(()=>STUDIO.world.get(5,1,4)==='grass'));
+  await get(()=>document.body.classList.add('panel-timeline'));await page.waitForTimeout(300);
   await page.locator('[data-mode="translate"]').click();
   check('transform handles attach to the selected root',await get(()=>STUDIO.gizmo.object===STUDIO.selected.root&&STUDIO.gizmo.mode==='translate'));
   await page.locator('[data-mode="select"]').click();
@@ -131,7 +135,7 @@ try{
   await page.locator('#open-project-menu').click();const save=await downloadClick('#save-project','project.bloxd.json');
   check('save project produces JSON with scene and key data',JSON.parse(fs.readFileSync(save)).format==='bloxd-studio');
   const snapshot=await get(()=>({n:STUDIO.objects.length,b:STUDIO.world.count,k:STUDIO.camTrack.keys.length}));
-  await page.locator('#delete-object').click();await page.setInputFiles('#project-file',save);await page.waitForFunction(n=>STUDIO.objects.length===n,snapshot.n,{timeout:30000});
+  await page.locator('#delete-object').click();page.once('dialog',d=>d.accept());await page.setInputFiles('#project-file',save);await page.waitForFunction(n=>STUDIO.objects.length===n,snapshot.n,{timeout:30000});
   check('project round-trip preserves imports, terrain and camera keys',await page.evaluate(s=>STUDIO.objects.length===s.n&&STUDIO.world.count===s.b&&STUDIO.camTrack.keys.length===s.k,snapshot));
 
   await page.evaluate(data=>STUDIO.loadProject(data),starter);

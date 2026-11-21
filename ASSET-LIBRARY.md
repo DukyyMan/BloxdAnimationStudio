@@ -101,3 +101,7 @@ npm run build
 `DracoPy` is a **build-time** decoder only. The runtime uses the included `fflate` MIT-licensed decompressor to unpack a local data bank; there is no runtime fetch of game assets. Existing v1–v3 projects retain the old short block IDs through aliases.
 
 New block names and item choices work with the local validated command interpreter.
+
+## Mob geometry audit (21 November 2026)
+
+See `MOBS.md` and `assets/mob-audit.json` for the per-mob source/geometry audit. The genuine combined `67.glb` static model is distinguished from caught-mob inventory graphics. No unverified anatomical rig was promoted to a usable mob. Reproduce with `python3 tools/audit-mobs.py`.

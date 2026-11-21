@@ -1,0 +1,2866 @@
+{
+  "audited": "2026-11-21",
+  "sources": {
+    "packRevision": "e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9",
+    "officialPackTreeRechecked": "2e793bc63ebffe2333039516c9d9be55f504c20c",
+    "codeApiRevision": "fe6e92a78c19ca3ffaecd9b72d37dcfc7aec92ad",
+    "codeApiFile": "MOB_SETTINGS.md",
+    "codeApiSnapshotSHA256": "c56851f3297dfc8bbe7b06f4d239fdcf6bdbb64a25abff849c775f22b88039f3",
+    "hubMapping": "assets/catalog-sources/hub-block-registry.json",
+    "gameMapping": "assets/catalog-sources/game-asset-registry.json"
+  },
+  "usableCount": 0,
+  "limitations": [
+    "Live BloxdHub/game hosts are not reachable in this coding environment (outbound allowlist). Local recorded mappings and packaged geometry were inspected.",
+    "No original living-creature skeleton or anatomical part meshes verified. No fake rig or replacement art added.",
+    "67.glb is genuinely three-dimensional, but its one combined mesh has no skeleton, part hierarchy or animations. It is not promoted to Mobs."
+  ],
+  "mobs": [
+    {
+      "name": "67",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/67.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/67.glb",
+          "sha256": "03fb84cbfe917f328e0a4e8e3e93aa51cb856bbce7ef1e4796a961771fec2edb",
+          "gitBlob": "5112f81b91fb6be522b0b22292871ca27eaa59fc",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "cube",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 456,
+              "min": [
+                -1.6875,
+                -7.28583859910259e-17,
+                -0.28125
+              ],
+              "max": [
+                1.6901180744171143,
+                2.9503896236419678,
+                1.375
+              ]
+            },
+            {
+              "vertices": 456,
+              "min": [
+                -1,
+                -1,
+                -1
+              ],
+              "max": [
+                1,
+                1,
+                1
+              ]
+            }
+          ],
+          "classification": "unrigged combined 3D mesh; anatomical partition/pivots not verified"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/67.png"
+      ],
+      "gameMappingCandidates": [
+        "67 Base Projectile",
+        "67 Boosted Projectile",
+        "67 Statue"
+      ],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Pig",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Pig Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Pig Default.glb",
+          "sha256": "b128408803275568703024471e401a1c62a5c1fe1a2d6832231f4541186569a2",
+          "gitBlob": "7a1ebdf529fa07890a6d98d12fdfeb8c056e0f12",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Pig_Atlas.png"
+      ],
+      "gameMappingCandidates": [
+        "npc_pig_head",
+        "pig_napoleon",
+        "pig_worker",
+        "piggy_banker"
+      ],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Cow",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Cow Cream.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Cow Cream.glb",
+          "sha256": "81ed81b314cb86f00d73f623b1e1459cf544478ad3742a32d8039c20a1fea37d",
+          "gitBlob": "7189c733e3206f4c003dda43875d2ed5366c4641",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Cow Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Cow Default.glb",
+          "sha256": "af5e1d4afa964bd4aa7ff5ed400f1ea9cd65511dc272d5c767b444ecb8fee435",
+          "gitBlob": "56ce81ed9e8fe4bf97315b7f8d298168920434b5",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Cow_Atlas.png"
+      ],
+      "gameMappingCandidates": [
+        "Cow's Milk"
+      ],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Sheep",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Sheep Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Sheep Default.glb",
+          "sha256": "e0b2d1c64349ea13c348172edc5802626af06deb4827c013d888feffacf84e65",
+          "gitBlob": "34a29d2a74ddf5c05713777155b1a5eb25e163b3",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/SheepWool_Atlas.png",
+        "assets/default-pack/textures/Sheep_Atlas.png"
+      ],
+      "gameMappingCandidates": [
+        "Sheep's Milk"
+      ],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Horse",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Horse Black.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Horse Black.glb",
+          "sha256": "323eddb516044c7bef409f0bb9cb35215707195d9550a8e2e493ac1370339d10",
+          "gitBlob": "caa5ea5f003d6bc011166a4940edf6cee411ea50",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 654,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Horse Brown.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Horse Brown.glb",
+          "sha256": "a54aeb4742c2d54cc6b1a2e878942178a1407550ba2ca1108f645a0d57d5271d",
+          "gitBlob": "1d48fa58e00ee87e993b4afb9150245217702d95",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 654,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Horse Cream.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Horse Cream.glb",
+          "sha256": "093078b5ec4b9e35e37d9a2b06b8ab53b48798f3f67cca7a486a257863af7f19",
+          "gitBlob": "8ecc39e0afe4e9ab8429f009894d7acf59167e00",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 654,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Horse Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Horse Default.glb",
+          "sha256": "cf28668f2109a4516a3a028b5dc52d5d00b21ab03833f876f0459384174b0ad8",
+          "gitBlob": "df40779074fc4dddce92d1f9ed9206156c26b8f3",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 654,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/HorseSaddle_Atlas.png",
+        "assets/default-pack/textures/Horse_Atlas.png"
+      ],
+      "gameMappingCandidates": [
+        "Seahorse"
+      ],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Camel",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Camel Brown.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Camel Brown.glb",
+          "sha256": "3af852b0f5e58a62041764a281e5255f2e2d2be5dd82afb1852993f5e40494ac",
+          "gitBlob": "dcf50f799f8e64520f3b9a8caabdcb54a30c6e73",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 598,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Camel Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Camel Default.glb",
+          "sha256": "5c0a76b115b879c2fbc43d8a70014ae8247aed70865de3f608569a603d6352b6",
+          "gitBlob": "6475e076f3f95fe3d2e6e47ef6734d92b39567e1",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 598,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Slime",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/live-item-models/Caught Mob Slime Default.glb",
+          "source": "https://static1.bloxd.io/models/Caught%20Mob%20Slime%20Default.glb",
+          "sha256": "1a3ad3049d3cd0c5546480fd28f9a7b8f16c23b9842c5105bc283bba3717542b",
+          "gitBlob": null,
+          "gitBlobVerified": null,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 672,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Cave Golem",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Cave_Golem Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Cave_Golem Default.glb",
+          "sha256": "1fd30953b2c1ecc12c8bce826ca448f7ce9952d1545b0b5600009bf8ef557ac0",
+          "gitBlob": "87c4848f2be3beff36f2c0a354af38b6907cf925",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 742,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Cave_Golem Iron.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Cave_Golem Iron.glb",
+          "sha256": "0e27804adea6ec7b37d294f16ce9ebff4082be90efe09b3190dea98e8525c4c8",
+          "gitBlob": "90fa810e36e08f97e4475942464c8069350e482b",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 742,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Cave Golem_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Draugr Zombie",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Draugr_Zombie Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Draugr_Zombie Default.glb",
+          "sha256": "670c55e9e1ad5657439da41c5d3b0e94644d2b5e892b6ff2600eba36f2652da9",
+          "gitBlob": "381e3ce4c6605d2e591c19a36fa2ed1e60e781a5",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Draugr_Zombie LongHairChestplate.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Draugr_Zombie LongHairChestplate.glb",
+          "sha256": "670c55e9e1ad5657439da41c5d3b0e94644d2b5e892b6ff2600eba36f2652da9",
+          "gitBlob": "381e3ce4c6605d2e591c19a36fa2ed1e60e781a5",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Draugr_Zombie LongHairClothed.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Draugr_Zombie LongHairClothed.glb",
+          "sha256": "670c55e9e1ad5657439da41c5d3b0e94644d2b5e892b6ff2600eba36f2652da9",
+          "gitBlob": "381e3ce4c6605d2e591c19a36fa2ed1e60e781a5",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Draugr_Zombie ShortHairClothed.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Draugr_Zombie ShortHairClothed.glb",
+          "sha256": "670c55e9e1ad5657439da41c5d3b0e94644d2b5e892b6ff2600eba36f2652da9",
+          "gitBlob": "381e3ce4c6605d2e591c19a36fa2ed1e60e781a5",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/live-item-models/Caught Mob Draugr_Zombie Longhairchestplate.glb",
+          "source": "https://static1.bloxd.io/models/Caught%20Mob%20Draugr_Zombie%20Longhairchestplate.glb",
+          "sha256": "1898b4b8aa17094618a294fe2f4f7f3cd5ffbaf055cd59908159493410fd6a79",
+          "gitBlob": null,
+          "gitBlobVerified": null,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 768,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/live-item-models/Caught Mob Draugr_Zombie Longhairclothed.glb",
+          "source": "https://static1.bloxd.io/models/Caught%20Mob%20Draugr_Zombie%20Longhairclothed.glb",
+          "sha256": "1898b4b8aa17094618a294fe2f4f7f3cd5ffbaf055cd59908159493410fd6a79",
+          "gitBlob": null,
+          "gitBlobVerified": null,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 768,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/live-item-models/Caught Mob Draugr_Zombie Shorthairclothed.glb",
+          "source": "https://static1.bloxd.io/models/Caught%20Mob%20Draugr_Zombie%20Shorthairclothed.glb",
+          "sha256": "1898b4b8aa17094618a294fe2f4f7f3cd5ffbaf055cd59908159493410fd6a79",
+          "gitBlob": null,
+          "gitBlobVerified": null,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 768,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Draugr Zombie_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Draugr Skeleton",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Draugr_Skeleton Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Draugr_Skeleton Default.glb",
+          "sha256": "e2740d0b72d1a7ffcbcbdeabe70d5d49bfd4fb84a9e2914e0526d9af7a5ea17a",
+          "gitBlob": "af6bf2c0c7b48cd0c66a31beff6de30d7cd66664",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Draugr Skeleton_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Frost Golem",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Frost_Golem Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Frost_Golem Default.glb",
+          "sha256": "b8eab2e91ea906bc66a2f25ca8b6ce8e4470c04bc776a8b4fa7092efc2d21f76",
+          "gitBlob": "8945319278dce44cb5308fe4413c36984b7f0b67",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 742,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Frost Golem_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Frost Zombie",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Frost_Zombie Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Frost_Zombie Default.glb",
+          "sha256": "071e7099cca3cc1a7fdc5918885a465c8b230066fc53312ee9754911da650d4e",
+          "gitBlob": "f1f12441681c621c19e083c080800b861fc2a5a8",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Frost_Zombie LongHairChestplate.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Frost_Zombie LongHairChestplate.glb",
+          "sha256": "071e7099cca3cc1a7fdc5918885a465c8b230066fc53312ee9754911da650d4e",
+          "gitBlob": "f1f12441681c621c19e083c080800b861fc2a5a8",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Frost_Zombie ShortHairClothed.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Frost_Zombie ShortHairClothed.glb",
+          "sha256": "071e7099cca3cc1a7fdc5918885a465c8b230066fc53312ee9754911da650d4e",
+          "gitBlob": "f1f12441681c621c19e083c080800b861fc2a5a8",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/live-item-models/Caught Mob Frost_Zombie Longhairchestplate.glb",
+          "source": "https://static1.bloxd.io/models/Caught%20Mob%20Frost_Zombie%20Longhairchestplate.glb",
+          "sha256": "6f030ee6b0bd0dc2ae75cf2c52635db2e6bbea83b8729deaed65d0f2027f515a",
+          "gitBlob": null,
+          "gitBlobVerified": null,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 768,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/live-item-models/Caught Mob Frost_Zombie Shorthairclothed.glb",
+          "source": "https://static1.bloxd.io/models/Caught%20Mob%20Frost_Zombie%20Shorthairclothed.glb",
+          "sha256": "6f030ee6b0bd0dc2ae75cf2c52635db2e6bbea83b8729deaed65d0f2027f515a",
+          "gitBlob": null,
+          "gitBlobVerified": null,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 768,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Frost Zombie_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Frost Skeleton",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Frost_Skeleton Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Frost_Skeleton Default.glb",
+          "sha256": "f9441f26153ffe22f94677d693d6b752dcadf59376d54bb251376a5a75d1fe3b",
+          "gitBlob": "c89309b5b1438db82e2ea9f5917f1b2079cd9055",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Frost Skeleton_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Draugr Knight",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Draugr_Knight Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Draugr_Knight Default.glb",
+          "sha256": "a367b60c784442e085755d3497fc857e78428e368441f18c71a34d5bd596f298",
+          "gitBlob": "398d347a9d94834c9dc3df3e13d52cb203680f56",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Draugr Knight_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Wolf",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Wolf Brown.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Wolf Brown.glb",
+          "sha256": "8ebd903bf1197a6722fb5014a11965dd5e8b0f1c117971b45f8fd2f5f147e658",
+          "gitBlob": "7f69ebf5d5ee1a6ba9dcf195f494af522b731ec4",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Wolf Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Wolf Default.glb",
+          "sha256": "2cb23b6efb196f3aa0e4258cfbddf10addd1f9973ce71aedda9d6546f8c8be09",
+          "gitBlob": "16b2c55883dcf6a2747611a1a55ae923d9605326",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Wolf Grey.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Wolf Grey.glb",
+          "sha256": "1d2f6eb2192b1c00bdfde86ab113c3c7a37d2981ac8cafd1c8e5892611c6fa30",
+          "gitBlob": "c374fbd0febd6b11b501f8a420e42f82b48648ab",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Wolf Spectral.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Wolf Spectral.glb",
+          "sha256": "0eb19c85705fba6af280c98796c4ef2154389be6376ed0ab3f0698a0776af34a",
+          "gitBlob": "ee7fb4f2db735cc463bf377cd0a7fb3de675d2d0",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 646,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Wolf White.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Wolf White.glb",
+          "sha256": "18b167e18f281ea0cebc078aedbbf9f1d03f3af05f702c14b88ab2898b0c5ee2",
+          "gitBlob": "e90abe9d16ad748731dca54bd7f0b55122df5999",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Spirit WolfCollar_Atlas.png",
+        "assets/default-pack/textures/Spirit Wolf_Atlas.png",
+        "assets/default-pack/textures/WolfCollar_Atlas.png",
+        "assets/default-pack/textures/Wolf_Atlas.png"
+      ],
+      "gameMappingCandidates": [
+        "Frost Wolf Eel",
+        "Northern Wolffish",
+        "wolf_in_suit",
+        "wolf_security"
+      ],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Bear",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Bear Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Bear Default.glb",
+          "sha256": "719d04e2060fe388bec6bd859fb23d55657f7070052f1bc0bc79c1be93c430f6",
+          "gitBlob": "293698e523337260c802db26d43ca7cd4efa805f",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 618,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/BearSaddle_Atlas.png",
+        "assets/default-pack/textures/Bear_Atlas.png",
+        "assets/default-pack/textures/Spirit BearSaddle_Atlas.png",
+        "assets/default-pack/textures/Spirit Bear_Atlas.png"
+      ],
+      "gameMappingCandidates": [
+        "dwarf_forked_beard",
+        "dwarf_ginger_beard",
+        "dwarf_grey_beard",
+        "dwarf_purple_beard",
+        "dwarf_short_beard"
+      ],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Deer",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Deer Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Deer Default.glb",
+          "sha256": "21e872fe3aed546afae90037f21070fb4807947ad86b9565fb10cc66a42f57b6",
+          "gitBlob": "0414c997f4ce40f29a5a1bea92e658ab593ab3f3",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 562,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/DeerAntlers_Atlas.png",
+        "assets/default-pack/textures/Deer_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Stag",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Stag Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Stag Default.glb",
+          "sha256": "ab1f7b5c8956c695b5dd192ca6fd5b900dfed6aa6b8ef5205df441b45aeae289",
+          "gitBlob": "d1233dc3f764cdb28fe47bd60018aecee22a0fe1",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 638,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Gold Watermelon Stag_Atlas.png",
+        "assets/default-pack/textures/Spirit StagSaddle_Atlas.png",
+        "assets/default-pack/textures/Spirit Stag_Atlas.png",
+        "assets/default-pack/textures/StagSaddle_Atlas.png",
+        "assets/default-pack/textures/Stag_Atlas.png"
+      ],
+      "gameMappingCandidates": [
+        "Chili Pepper Plant_stage1",
+        "Chili Pepper Plant_stage1|Lava",
+        "Chili Pepper Plant_stage2",
+        "Chili Pepper Plant_stage2|Lava",
+        "Chili Pepper Plant_stage3",
+        "Chili Pepper Plant_stage3|Lava",
+        "Chili Pepper Plant_stage4",
+        "Chili Pepper Plant_stage4|Lava",
+        "Chili Pepper Plant_stage5",
+        "Chili Pepper Plant_stage5|Lava"
+      ],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Gold Watermelon Stag",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Gold_Watermelon_Stag Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Gold_Watermelon_Stag Default.glb",
+          "sha256": "7c6e14a1f26fccae762d80c4893793e4484b3bdfd76a2aec77acbf9b7330011f",
+          "gitBlob": "373c5bc1ac3aa787e9dc94487d425952a138fe23",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 634,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Gold Watermelon Stag_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Gorilla",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Gorilla Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Gorilla Default.glb",
+          "sha256": "f8f9ad05467685551f37c0f8807f0af40cad1573be58e4dc8c0414d8d1354c33",
+          "gitBlob": "a6c8d5ba5fb6e002594c63fba5ac89381a247e1f",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 670,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/GorillaSaddle_Atlas.png",
+        "assets/default-pack/textures/Gorilla_Atlas.png",
+        "assets/default-pack/textures/Spirit GorillaSaddle_Atlas.png",
+        "assets/default-pack/textures/Spirit Gorilla_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Wildcat",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Wildcat Black.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Wildcat Black.glb",
+          "sha256": "5816f5faba9b7de66c03c31e629207ad96a45cb8876ea3ba2a376e41f271be86",
+          "gitBlob": "4a6e815f3e43d8260d8226ced6e29e7a8908fc37",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Wildcat Calico.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Wildcat Calico.glb",
+          "sha256": "c48cda6ce2b794b24ac8d4b61e4256dc31d9d5ee8551987b4d92f71d4ebd4142",
+          "gitBlob": "f3f9fb2009af7966a2bfccca3a67d8b20687fa0b",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 674,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Wildcat Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Wildcat Default.glb",
+          "sha256": "4e0e32ea79c193b821b72b6495cfb3631a3e5cd1f6a67c37345be58256e62bd7",
+          "gitBlob": "ba2df08a03f3158615862e487e09ecccce21c43f",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Wildcat Grey.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Wildcat Grey.glb",
+          "sha256": "c7877c91bbdc480dba65df4ad158f00ff6f3db7f208ae999ec05c89322a20789",
+          "gitBlob": "1b7896a1ada5873e2eab9ecab39f574f7bd51488",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 654,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Wildcat Leopard.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Wildcat Leopard.glb",
+          "sha256": "fbb33da291fd42e48c0f72548dbd8459a360fb24efc495da8ae8dafb32c6a71c",
+          "gitBlob": "e02719086c233863dccd84090eb3057748bbf64e",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 654,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Wildcat Siamese.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Wildcat Siamese.glb",
+          "sha256": "7d78e1fd5751e4a44df89cf78ce5d109c20b2941cf3c4e74c36f3af94d40e1b3",
+          "gitBlob": "2b37f030cb8d76602446bd61c7cfa4bfc7a9cb32",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/default-pack/models/Caught Mob Wildcat Tabby.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Wildcat Tabby.glb",
+          "sha256": "7fa05b19259b970bac86ab258277b810bc605928d72318d307317c33e07a01e8",
+          "gitBlob": "df92d643454a9b70a8ca3945b75d6c36ef770f19",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/WildcatCollar_Atlas.png",
+        "assets/default-pack/textures/Wildcat_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Magma Golem",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Magma_Golem Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Magma_Golem Default.glb",
+          "sha256": "04671c3ad0f7b3dea1ef9a4456ca17aa93988e54bf66a852db3f8203ee74c014",
+          "gitBlob": "8f489d67f845f4e6f4c97b55f20ae21d2704303c",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 742,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Magma Golem_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Draugr Huntress",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Draugr_Huntress Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Draugr_Huntress Default.glb",
+          "sha256": "5d92c6eb05571f1cebc85e104e54c109d6c18c475ff668c966449fe5e1c44f94",
+          "gitBlob": "c166a199c0aff435f8a946a11303cf4a34263b42",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Draugr Huntress_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Spirit Golem",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Spirit_Golem Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Spirit_Golem Default.glb",
+          "sha256": "8b872e653d8d3815d2a16229a28cac64d65bc16049084414c6403a9968e77c74",
+          "gitBlob": "00839a5800f89d04004a5a08d1b0f193e2fd80ee",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 714,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Spirit Golem_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Spirit Wolf",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Spirit_Wolf Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Spirit_Wolf Default.glb",
+          "sha256": "d88697282b15f4b8825fee136006a402f1c9113d3c25a475ae32f387a923b597",
+          "gitBlob": "eed1d50126edfb0d9ac94ec2f319616080105cb9",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 698,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Spirit WolfCollar_Atlas.png",
+        "assets/default-pack/textures/Spirit Wolf_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Spirit Bear",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Spirit_Bear Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Spirit_Bear Default.glb",
+          "sha256": "c5bd49dcf3445d5dda493d0763040ef4d9e9bd073816ceb518891cd42764b546",
+          "gitBlob": "4eb53232be2c0fce5de794c446a564056c4052e3",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 666,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Spirit BearSaddle_Atlas.png",
+        "assets/default-pack/textures/Spirit Bear_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Spirit Stag",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Spirit_Stag Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Spirit_Stag Default.glb",
+          "sha256": "b0653b5e85539e89c1c50bf4d56af7b280986516d7ad953952f6c9cac81fe66e",
+          "gitBlob": "668ba96cda197800836c1edc736e6c0614ecfd77",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 684,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Spirit StagSaddle_Atlas.png",
+        "assets/default-pack/textures/Spirit Stag_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Spirit Gorilla",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Spirit_Gorilla Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Spirit_Gorilla Default.glb",
+          "sha256": "6bc11b51ea3062696583cf0aa56fed1924a4c817e5703c10b78b50e626da21a9",
+          "gitBlob": "0a4449af4e469bf47ccc831ca11b4c13a7f9a64a",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 718,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [
+        "assets/default-pack/textures/Spirit GorillaSaddle_Atlas.png",
+        "assets/default-pack/textures/Spirit Gorilla_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Draugr Warper",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Draugr_Warper Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Draugr_Warper Default.glb",
+          "sha256": "fbfc2e2fa683c7983efee21c5196d6183f9046f11d24d9ce954ebf340b8d6985",
+          "gitBlob": "e69802a5ac0eba62ebed6a34d64269a2a09c7e97",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 502,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Frost Wraith",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Frost_Wraith Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Frost_Wraith Default.glb",
+          "sha256": "853a1a211cad0d441ad1440aab7c43b27f1c06639fcb242d08baf9fd018cdcc3",
+          "gitBlob": "b0f0ece38d5cc68b34dd840d8dce8f9c96f3ed19",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 510,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Draugr Reaver",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/Caught Mob Draugr_Reaver Default.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/Caught Mob Draugr_Reaver Default.glb",
+          "sha256": "2683f8cb98a5f90279380f9c3948815ce2c876f4a5023cc2e39c3d088c44d78b",
+          "gitBlob": "e6b90364eca9d2634d76fbf78ee822a66657da6f",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 650,
+              "min": [
+                -4,
+                -4,
+                -1
+              ],
+              "max": [
+                4,
+                4,
+                1
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Stalker",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/live-item-models/Caught Mob Stalker Crimson.glb",
+          "source": "https://static1.bloxd.io/models/Caught%20Mob%20Stalker%20Crimson.glb",
+          "sha256": "21c2748f5cd26110a8eeec09400572ac6400c352b78cd52240b940acc4649798",
+          "gitBlob": null,
+          "gitBlobVerified": null,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 648,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/live-item-models/Caught Mob Stalker Default.glb",
+          "source": "https://static1.bloxd.io/models/Caught%20Mob%20Stalker%20Default.glb",
+          "sha256": "b16153b8545a78d72d078ab81cc33a6feb2aba0bc3b597dd9b7c34186f924caf",
+          "gitBlob": null,
+          "gitBlobVerified": null,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 648,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/live-item-models/Caught Mob Stalker Frost.glb",
+          "source": "https://static1.bloxd.io/models/Caught%20Mob%20Stalker%20Frost.glb",
+          "sha256": "24f12444e12e1346e2805d166cd93a1639dc41b8d7db7d8ac12ba8e8a9275c95",
+          "gitBlob": null,
+          "gitBlobVerified": null,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 648,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        },
+        {
+          "file": "assets/live-item-models/Caught Mob Stalker Void.glb",
+          "source": "https://static1.bloxd.io/models/Caught%20Mob%20Stalker%20Void.glb",
+          "sha256": "1025744f3cc24899fe6fbc1d88a59fa316f4c9f18953325e58fb4d2852cefa84",
+          "gitBlob": null,
+          "gitBlobVerified": null,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 648,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Crone",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/live-item-models/Caught Mob Crone Default.glb",
+          "source": "https://static1.bloxd.io/models/Caught%20Mob%20Crone%20Default.glb",
+          "sha256": "bbf8eb86ba43b6fd9ba066469308d418488bf89c4b007dd4d09947da00781793",
+          "gitBlob": null,
+          "gitBlobVerified": null,
+          "nodes": [
+            {
+              "name": "generated(Clone)",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 648,
+              "min": [
+                -4,
+                -4,
+                -0.5
+              ],
+              "max": [
+                4,
+                4,
+                0.5
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Iron Guardian",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Gold Guardian",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Diamond Guardian",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Moonstone Guardian",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Iron Goofy Golem",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Gold Goofy Golem",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Diamond Goofy Golem",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Moonstone Goofy Golem",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Tiki Terror",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "NPC",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [
+        "npc_pig_head"
+      ],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Bobino Musculino",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/bobino_musculino.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/bobino_musculino.glb",
+          "sha256": "9d191d5423e855cacb633e81800b549b54b1dd2cd6735be7aefc4e75802053f2",
+          "gitBlob": "118873880c9d310d10cfb546cd85c3ed48ddd9bf",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "LegRightMesh",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 2,
+          "positionAccessors": [
+            {
+              "vertices": 528,
+              "min": [
+                -0.5625,
+                -0.015625,
+                -0.296875
+              ],
+              "max": [
+                0.5625,
+                2.015625,
+                0.296875
+              ]
+            },
+            {
+              "vertices": 528,
+              "min": [
+                -1,
+                -1,
+                -1
+              ],
+              "max": [
+                1,
+                1,
+                1
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [],
+      "gameMappingCandidates": [
+        "Bobino Musculino Statue"
+      ],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Capitano Explovissimo",
+      "usable": false,
+      "geometry": [
+        {
+          "file": "assets/default-pack/models/capitano_explovissimo.glb",
+          "source": "https://github.com/Bloxdy/texture-packs/blob/e7c5a7e17f895c7df6bfe788667ccb7cbdee00c9/default/models/capitano_explovissimo.glb",
+          "sha256": "c101768f7b769a730a6f3b05bddace3599bba1c3538d349c95b9da1e0282b960",
+          "gitBlob": "b6a7e712e7a2d17af337c3385ca363a35bd5ef9e",
+          "gitBlobVerified": true,
+          "nodes": [
+            {
+              "name": "cube",
+              "mesh": 0,
+              "children": []
+            }
+          ],
+          "meshes": 1,
+          "skins": 0,
+          "animations": 0,
+          "embeddedImages": 1,
+          "positionAccessors": [
+            {
+              "vertices": 312,
+              "min": [
+                -0.75,
+                0,
+                -0.5625
+              ],
+              "max": [
+                0.75,
+                2.4375,
+                0.515625
+              ]
+            },
+            {
+              "vertices": 312,
+              "min": [
+                -1,
+                -1,
+                -1
+              ],
+              "max": [
+                1,
+                1,
+                1
+              ]
+            }
+          ],
+          "classification": "inventory/prop geometry, not the living creature"
+        }
+      ],
+      "textureCandidates": [],
+      "gameMappingCandidates": [
+        "Capitano Explovissimo Statue"
+      ],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Desert Fennec",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Armour Collector",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Furnace Knight",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Lil Knight",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Glass Gremlin",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Glass Bro",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Lord Vulcan",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Zombie",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [
+        "assets/default-pack/textures/Draugr Zombie_Atlas.png",
+        "assets/default-pack/textures/Frost Zombie_Atlas.png"
+      ],
+      "gameMappingCandidates": [
+        "zombie"
+      ],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Skeleton",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [
+        "assets/default-pack/textures/Draugr Skeleton_Atlas.png",
+        "assets/default-pack/textures/Frost Skeleton_Atlas.png"
+      ],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Mummy",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Scorpion",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Vulcanite",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Evil Tome",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    },
+    {
+      "name": "Magma Toad",
+      "usable": false,
+      "geometry": [],
+      "textureCandidates": [],
+      "gameMappingCandidates": [],
+      "reason": "No verified anatomy/rig for the living mob. Inventory icons and texture atlases are not usable mob rigs."
+    }
+  ]
+}

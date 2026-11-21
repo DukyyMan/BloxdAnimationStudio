@@ -9,7 +9,7 @@ function watch(page){page.on('pageerror',e=>errors.push(e.message));page.on('con
 try{
  const page=await context.newPage();watch(page);await page.addInitScript(()=>localStorage.setItem('studioDevice','desktop'));
  await page.goto('file://'+path.join(root,'START-HERE.html'));await page.waitForFunction(()=>window.STUDIO?.ready,null,{timeout:60000});await page.waitForFunction(()=>!document.querySelector('#loader'));await page.evaluate(()=>{const b=document.querySelector('.dock [data-panel="library"]'),i=document.querySelector('.dock [data-panel="inspector"]'),t=document.querySelector('.dock [data-panel="timeline"]');b.click();i.click();t.click();});await page.waitForTimeout(500);
- const starter=await page.evaluate(()=>STUDIO.projectData());check('standalone v2 opens with the network disabled',starter.version===2&&starter.objects.length===9);
+ const starter=await page.evaluate(()=>STUDIO.projectData());check('standalone opens with the network disabled',starter.version===3&&starter.objects.length===9);
 
  await page.screenshot({path:path.resolve(root,'../sources/final-editor.png')});
  await page.evaluate(()=>{const b=document.querySelector('.dock [data-panel="library"]'),i=document.querySelector('.dock [data-panel="inspector"]'),t=document.querySelector('.dock [data-panel="timeline"]');b.click();i.click();t.click();});
