@@ -8,7 +8,7 @@ const browser=await launch({args:['--no-sandbox','--use-gl=angle','--use-angle=s
 const get=fn=>page.evaluate(fn);
 async function time(t){await page.locator('#key-time').fill(String(t));await page.locator('#key-time').press('Tab');}
 async function angle(axis,value){await page.locator('#rot-'+axis).fill(String(value));}
-async function terrain(){const p=await get(()=>{STUDIO.camera.updateMatrixWorld();const v=new STUDIO.THREE.Vector3(5.5,1.001,4.5).project(STUDIO.camera),r=document.querySelector('#scene').getBoundingClientRect();return{x:r.x+(v.x+1)*r.width/2,y:r.y+(1-v.y)*r.height/2};});await page.mouse.click(p.x,p.y);}
+async function terrain(){const p=await get(()=>{const S=STUDIO,T=S.THREE,r=document.querySelector('#scene').getBoundingClientRect();S.camera.updateMatrixWorld();for(const [x,z] of [[5.5,4.5],[4.5,3.5],[5.5,1.5],[3.5,3.5],[-3.5,3.5]]){const v=new T.Vector3(x,1.001,z).project(S.camera),p={x:r.x+(v.x+1)*r.width/2,y:r.y+(1-v.y)*r.height/2};if(document.elementFromPoint(p.x,p.y)===document.querySelector('#scene')){const h=S.sceneHit({clientX:p.x,clientY:p.y});if(h&&S.world.meshes.includes(h.object))return p;}}throw new Error('No unobstructed terrain test point');});await page.mouse.click(p.x,p.y);}
 async function reset(data){await page.evaluate(d=>STUDIO.loadProject(d),data);await get(()=>{STUDIO.frameScene();STUDIO.setMode('select');});}
 async function apply(){await page.locator('#key-pose').click();}
 try{
@@ -26,7 +26,7 @@ try{
  const area=await page.locator('#track-area').boundingBox();await page.mouse.click(area.x+area.width*3/8,area.y+8);
  check('choosing a moment after typing rotation does not wipe the unblurred edit',await get(()=>Math.abs(STUDIO.selected.root.rotation.y-Math.PI/3)<1e-6&&STUDIO.selected.draft.time===3));
  check('pending change is visible and has an explicit Revert action',await page.locator('#pending-edit').isVisible()&&await page.locator('#revert-edit').isVisible());
- check('choosing key time preserves the editing camera',await page.evaluate(a=>STUDIO.camera.position.distanceTo(new STUDIO.THREE.Vector3(...a))<1e-6,beforeCamera));
+ check('choosing key time synchronizes the first-person animation camera',await get(()=>STUDIO.camera.position.distanceTo(STUDIO.camTrack.sample(3).position)<1e-6));
  await apply();await time(1.5);check('edit-first / time-second workflow writes a usable later key',close(await get(()=>STUDIO.selected.root.rotation.y*180/Math.PI),30));
  check('block editing leaves Bob’s eight demo keys and three camera keys unchanged',await page.evaluate(({bobKeys,camKeys})=>JSON.stringify(STUDIO.objects.find(r=>r.character).character.keys)===bobKeys&&JSON.stringify(STUDIO.camTrack.keys)===camKeys,{bobKeys,camKeys}));
  await time(3);await page.locator('#preview-start').click();await page.waitForFunction(()=>STUDIO.timeline.time>.2&&STUDIO.timeline.playing);
@@ -59,7 +59,7 @@ try{
  await page.locator('#object-name').fill('Spinner regression');await page.locator('#object-name').press('Tab');await angle('x',25);
  await page.locator('#open-project-menu').click();const savedPromise=page.waitForEvent('download');await page.locator('#save-project').click();const download=await savedPromise,savedFile=path.join(out,'keyframe-fixed-project.bloxd.json');await download.saveAs(savedFile);const saved=JSON.parse(fs.readFileSync(savedFile));
  check('Save project applies a pending transform at its chosen time',saved.objects.find(r=>r.name==='Spinner regression').keys.some(k=>k.time===1.5&&close(k.rotation[0],25*Math.PI/180))&&!(await get(()=>STUDIO.selected.draft)));
- await page.locator('#delete-object').click();await page.setInputFiles('#project-file',savedFile);await page.waitForFunction(()=>STUDIO.objects.some(r=>r.name==='Spinner regression'));await get(()=>STUDIO.select(STUDIO.objects.find(r=>r.name==='Spinner regression')));await time(1.5);check('saved block keyframes replay correctly after opening the project',close(await get(()=>STUDIO.selected.root.rotation.x),25*Math.PI/180));
+ await page.locator('#delete-object').click();page.once('dialog',d=>d.accept());await page.setInputFiles('#project-file',savedFile);await page.waitForFunction(()=>STUDIO.objects.some(r=>r.name==='Spinner regression'));await get(()=>STUDIO.select(STUDIO.objects.find(r=>r.name==='Spinner regression')));await time(1.5);check('saved block keyframes replay correctly after opening the project',close(await get(()=>STUDIO.selected.root.rotation.x),25*Math.PI/180));
  await angle('y',40);const draftProject=await get(()=>STUDIO.projectData());check('raw project data also retains an unapplied draft',!!draftProject.objects.find(r=>r.name==='Spinner regression').draft);
  await page.evaluate(d=>STUDIO.loadProject(d),draftProject);await get(()=>STUDIO.select(STUDIO.objects.find(r=>r.name==='Spinner regression')));await time(3.5);
  check('pending edit survives project round-trip and another time selection',await get(()=>!!STUDIO.selected.draft&&Math.abs(STUDIO.selected.root.rotation.y-40*Math.PI/180)<1e-6));
