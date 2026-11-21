@@ -1,6 +1,6 @@
 {
   "name": "bloxd-animation-studio",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "private": true,
   "type": "module",
   "description": "An unofficial, local-first Bloxd-themed animation editor.",

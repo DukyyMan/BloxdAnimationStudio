@@ -67,6 +67,15 @@ Select a character in the inspector. Click a preset to bake keys at the playhead
 
 Run `npm run test:code` for compiler tests and `npm run build` to rebuild the standalone editor. The interpreter derives from DukyyMan/BloxdAnimationMaker (MIT); its license and Acorn's license are in `tools/script/`.
 
+## Generate Code From Scene
+
+The **Generate code from scene** button in the Code Editor toolbar is the reverse of the AI Prompt Builder: it inspects the actual scene data and deterministically emits a script that rebuilds it through this same scripting API. It is fully local — no AI, no network request, no API key — and the same unchanged scene always produces byte-identical code (no timestamps in the output).
+
+- Generated sections: timeline settings, terrain as merged `terrain.fill` runs, characters (with pose keys), block/item assets (with exact ids and transforms), custom meshes, object/camera/sun keys, environment and sun settings.
+- Existing generated IDs (`options.scriptId`) are reused; other object ids are derived from their names.
+- The generated code replaces the editor contents only after a confirmation, is fully editable, and is applied through the normal Validate → Run flow (one undoable change).
+- Scene features the scripting API cannot express — decorative trees/rocks/lamps, imported and voxel models, attachments, armor, held items, detached parts, per-part move/scale channels, body lift, Hold easing, quaternion camera roll, custom skybox/textures, image objects and imported audio — are **not** faked: they are listed in the Error Inspector as "Not scriptable" and summarized in the execution output after generation.
+
 ## Authoring workflow
 
 Open **AI Prompt Builder** in the studio header or Code Editor. Pick a creation type and describe the result. The customized copy includes this reference and the same runnable examples as the editor library. Manual previews stay separate per type during the session; Regenerate adopts the current settings. No account or network request is involved. The Tour button in the dock offers studio, editor and prompt-builder walkthroughs.

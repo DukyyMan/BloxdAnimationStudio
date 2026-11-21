@@ -33,6 +33,8 @@ import { plainState, stageEdit, mergeEdit, keyFromState, stateFromKey, validateD
 import { compilePlan, makeSceneContext } from './lib/ai-commands.js';
 import { initPromptBuilder } from './lib/prompt-builder.js';
 import { initTours } from './lib/studio-tour.js';
+import { initChangelog } from './lib/changelog.js';
+import { generateSceneCode } from './lib/scene-to-code.js';
 import { initCodeStudio } from './lib/code-studio.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -88,7 +90,7 @@ async function main(){
   const cameraWorkspace=new CameraWorkspace(camera,orbit,canvas,helpers);
   const viewCamera=()=>cameraWorkspace.camera,viewOrbit=()=>cameraWorkspace.controls;
   const objects=[];let selected=null,serial=0,frames=0;
-  const state={mode:'select',scope:'root',joint:'head',parts:[],toolAction:'place',category:'blocks',block:'grass',inspector:'object',selectedKey:null,keySel:emptySelection(),clean:false,libraryPage:0,libraryGroup:'',libraryAdvanced:false,pathMode:false,autoKey:false,onion:true,chainMode:false,chainQueue:[],fill:{on:false,plane:'auto',layers:1,raise:0}};
+  const state={mode:'select',scope:'root',joint:'head',parts:[],toolAction:'place',category:'blocks',block:'grass',inspector:'object',selectedKey:null,keySel:emptySelection(),clean:false,libraryPage:0,libraryGroup:'',libraryAdvanced:false,pathMode:false,autoKey:false,onion:true,chainMode:false,chainQueue:[],fill:{on:false,plane:'auto',layers:1,raise:0},multi:[]};
   // Centralized keyboard shortcuts (persisted per browser) and navigation (fly) camera state.
   let shortcutStore=null;try{shortcutStore=window.localStorage;}catch(e){}
   const shortcuts=new ShortcutManager({storage:shortcutStore});
@@ -136,14 +138,14 @@ async function main(){
   function stageActorEdit(r,before){r.draft=stageEdit(plainState(before),poseState(r),before.draft||null,timeline.time);updateKeyUI();}
   function trackSnapshot(r){return{keys:clone(keysOf(r)),actor:actorSnapshot(r)};}
   function restoreTrack(r,s){if(r.character)r.character.keys=clone(s.keys);else r.keys=clone(s.keys);restoreActor(r,s.actor);refreshTimeline();}
-  function applyObjectKey(r,time=timeline.time){
+  function applyObjectKey(r,time=timeline.time,silent=false){
     const before=trackSnapshot(r),keys=keysOf(r),draft=r.draft;
     const value=draft?mergeEdit(sampledState(r,time),draft):poseState(r);
     const addedStart=time>KEY_EPS&&!keys.some(k=>k.time<=KEY_EPS);
     if(addedStart){const first=keys.slice().sort((a,b)=>a.time-b.time)[0],start=first?stateFromKey(first,!!r.character):(draft?.original||value);putKey(keys,keyFromState(start,0,!!r.character));}
     putKey(keys,keyFromState(value,time,!!r.character));r.draft=null;
     applyActorState(r,sampledState(r,timeline.time));const after=trackSnapshot(r);
-    pushHistory(r.character?'apply pose key':'apply transform key',()=>restoreTrack(r,before),()=>restoreTrack(r,after));
+    if(!silent)pushHistory(r.character?'apply pose key':'apply transform key',()=>restoreTrack(r,before),()=>restoreTrack(r,after));
     return addedStart;
   }
   function applyPendingEdits(){
@@ -237,7 +239,7 @@ async function main(){
     objectGroup.add(root);objects.push(rec);return rec;
   }
   function attachRecord(r){if(!objects.includes(r))objects.push(r);objectGroup.add(r.root);selectObject(r);}
-  function detachRecord(r){objectGroup.remove(r.root);const idx=objects.indexOf(r);if(idx>=0)objects.splice(idx,1);if(selected===r)selectObject(objects.find(o=>o.character)||objects[0]||null);else refreshAll();}
+  function detachRecord(r){objectGroup.remove(r.root);const idx=objects.indexOf(r);if(idx>=0)objects.splice(idx,1);if(state.multi.includes(r)){state.multi=state.multi.filter(x=>x!==r);groupAnchor=null;disposeMultiHelpers();if(gizmo.object===multiProxy)gizmo.detach();}if(selected===r)selectObject(objects.find(o=>o.character)||objects[0]||null);else refreshAll();}
   function added(r){selectObject(r);showInspector('object');pushHistory('add '+r.name,()=>detachRecord(r),()=>attachRecord(r));toast(r.name+' added');}
   function spawnPosition(){const x=clamp(Math.round(orbit.target.x)+2,-7,7),z=clamp(Math.round(orbit.target.z)+2,-5,5);return new THREE.Vector3(x,world.heightAt(x,z),z);}
   function addBob(position,name='Bob'){
@@ -432,7 +434,7 @@ async function main(){
     setPlaying(false);
     if(fillDrag)cancelFill();
     state.mode=mode;$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
-    gizmo.detach();placePartProxy();const target=cameraWorkspace.editing?camera:selectedTarget();if(target&&['translate','rotate','scale'].includes(mode)){gizmo.attach(target);gizmo.setMode(mode);gizmo.setSpace(mode==='translate'&&state.scope!=='held'?'world':'local');}
+    gizmo.detach();placePartProxy();const target=cameraWorkspace.editing?camera:(state.multi.length>1?multiProxy:selectedTarget());if(target&&['translate','rotate','scale'].includes(mode)){gizmo.attach(target);gizmo.setMode(mode);gizmo.setSpace(mode==='rotate'&&state.multi.length>1?'local':mode==='translate'&&state.scope!=='held'?'world':'local');}
     hover.visible=false;const building=mode==='build'||mode==='erase',terrain=mode==='terrain',zoneMode=mode==='zone';$('#build-badge').hidden=!(building||terrain||zoneMode);
     $('#build-badge').textContent=mode==='erase'?'Remove blocks · click any block':terrain?BRUSH_LABELS[terrainCfg.tool]+' brush · drag over terrain':zoneMode?'Cinematic build · drag a box over the world':'Placing '+blockDefs[state.block].label+' · right-click to erase';
     const filling=building&&state.fill.on;if(filling)$('#build-badge').textContent=(mode==='erase'?'Drag-remove':'Drag-fill '+blockDefs[state.block].label)+' · drag a rectangle · Esc cancels';
@@ -445,22 +447,129 @@ async function main(){
     else{orbit.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN};orbit.touches={ONE:THREE.TOUCH.ROTATE,TWO:THREE.TOUCH.DOLLY_PAN};}
     canvas.style.cursor=(building||terrain||zoneMode)?'crosshair':'default';
   }
-  function selectObject(r,scope='root',joint=state.joint){cameraWorkspace.editing=false;finishInputEdit();const changed=r!==selected;selected=r;if(r?.draft)r.draft.time=timeline.time;state.selectedKey=null;if(changed&&state.keySel.type==='pose')state.keySel=emptySelection();state.scope=r?.character?scope:'root';state.joint=joint;state.parts=state.scope==='part'?[joint]:[];$('#joint-select').value=joint;refreshOutliner();refreshInspector();refreshTimeline();setMode(['build','erase'].includes(state.mode)?'select':state.mode);}
+  // ── Multi-object selection and group transformation ───────────────────────
+  // Separate from body-part and timeline-key selection: state.multi holds whole
+  // scene-object records (characters, blocks, props, imports) that move, rotate
+  // and scale together around a shared pivot. Single-selection behavior is
+  // untouched whenever the group is empty.
+  const multiProxy=new THREE.Object3D();multiProxy.name='Multi-selection pivot';multiProxy.visible=false;helpers.add(multiProxy);
+  const multiHelpers=[];let groupAnchor=null;
+  const eligibleForMulti=r=>r&&objects.includes(r)&&r.root.parent===objectGroup&&(!r.options||r.options.visibility!==false);
+  function multiCount(){return state.multi.length;}
+  function disposeMultiHelpers(){for(const h of multiHelpers){helpers.remove(h);h.geometry?.dispose();h.material?.dispose();}multiHelpers.length=0;}
+  function refreshMultiHelpers(){
+    disposeMultiHelpers();
+    for(const r of state.multi){
+      if(r===selected)continue;
+      const h=new THREE.BoxHelper(r.root,0xd4ef9a);h.material.transparent=true;h.material.opacity=.55;h.material.depthWrite=false;
+      h.update();helpers.add(h);multiHelpers.push(h);
+    }
+  }
+  function multiCentroid(){const c=new THREE.Vector3();if(!state.multi.length)return c;for(const r of state.multi)c.add(r.root.position);return c.multiplyScalar(1/state.multi.length);}
+  function rebaseGroupAnchor(){
+    if(state.multi.length<2){groupAnchor=null;return;}
+    groupAnchor={members:state.multi.slice(),base:state.multi.map(poseState),centroid:multiCentroid(),quat:new THREE.Quaternion()};
+    multiProxy.position.copy(groupAnchor.centroid);multiProxy.quaternion.identity();multiProxy.scale.set(1,1,1);multiProxy.updateMatrix();
+  }
+  function clearMulti(){if(!state.multi.length)return;state.multi=[];groupAnchor=null;disposeMultiHelpers();if(gizmo.object===multiProxy)gizmo.detach();refreshOutliner();refreshInspector();}
+  function toggleMultiMember(r){
+    if(!eligibleForMulti(r))return;
+    finishInputEdit();setPlaying(false);viewOverride=true;
+    const i=state.multi.indexOf(r);
+    if(i>=0)state.multi.splice(i,1);else state.multi.push(r);
+    if(!state.multi.includes(selected))selectObject(r);else refreshInspector();
+    if(state.multi.length&&selected&&state.multi[0]!==selected)state.multi.sort((a,b)=>a===selected?-1:b===selected?1:0);
+    if(state.multi.length>1){
+      rebaseGroupAnchor();refreshMultiHelpers();
+      setMode('translate');
+      toast(state.multi.length+' objects selected · transform handles move them together.');
+    }else{groupAnchor=null;disposeMultiHelpers();if(gizmo.object===multiProxy)gizmo.detach();}
+    refreshOutliner();
+  }
+  function selectAllSceneObjects(){
+    const eligible=objects.filter(eligibleForMulti);
+    if(eligible.length<2){toast('Nothing extra to select.');return;}
+    finishInputEdit();setPlaying(false);viewOverride=true;
+    state.multi=eligible.slice();
+    if(!state.multi.includes(selected))selectObject(eligible.find(r=>r.character)||eligible[0]);
+    rebaseGroupAnchor();refreshMultiHelpers();refreshOutliner();refreshInspector();
+    setMode('translate');
+    toast(state.multi.length+' objects selected.');
+  }
+  // Apply the gizmo's proxy delta to every member while preserving each
+  // object's own pose: p' = pivot + R·(s·(p−pivot)), q' = ΔR·q, scale' = s·scale.
+  function updateMultiMembers(){
+    if(!groupAnchor||state.multi.length<2)return;
+    const dQuat=multiProxy.quaternion.clone();
+    const s=Math.max(.05,(multiProxy.scale.x+multiProxy.scale.y+multiProxy.scale.z)/3);
+    groupAnchor.members.forEach((r,i)=>{
+      const base=groupAnchor.base[i],root=r.root;
+      const rel=new THREE.Vector3(base.transform.position[0]-groupAnchor.centroid.x,base.transform.position[1]-groupAnchor.centroid.y,base.transform.position[2]-groupAnchor.centroid.z).multiplyScalar(s).applyQuaternion(dQuat);
+      root.position.copy(multiProxy.position).add(rel);
+      const q=new THREE.Quaternion().setFromEuler(new THREE.Euler(base.transform.rotation[0],base.transform.rotation[1],base.transform.rotation[2])).premultiply(dQuat);
+      root.quaternion.copy(q);
+      root.scale.set(base.transform.scale[0]*s,base.transform.scale[1]*s,base.transform.scale[2]*s);
+      root.updateMatrixWorld(true);
+    });
+    refreshMultiHelpers();
+  }
+  function restoreGroupStates(states){
+    for(const {r,state:s} of states)restoreActor(r,s);
+    state.multi=states.map(x=>x.r).filter(eligibleForMulti);
+    rebaseGroupAnchor();refreshMultiHelpers();refreshOutliner();refreshInspector();refreshTimeline();
+  }
+  function recordGroupChange(label){
+    if(!groupAnchor||state.multi.length<2)return;
+    const before=groupAnchor.members.map((r,i)=>({r,anchor:groupAnchor.base[i]}));
+    const after=groupAnchor.members.map(r=>({r,state:poseState(r)}));
+    // Auto-key commits the whole group at the playhead as one undoable step.
+    if(state.autoKey){
+      const tracksBefore=groupAnchor.members.map(r=>trackSnapshot(r));
+      for(const r of groupAnchor.members){r.draft=null;applyObjectKey(r,timeline.time,false);}
+      const tracksAfter=groupAnchor.members.map(r=>trackSnapshot(r));
+      const undoRestore=()=>{groupAnchor.members.forEach((r,i)=>restoreTrack(r,tracksBefore[i]));restoreGroupStates(before.map(b=>({r:b.r,state:b.anchor})));};
+      const redoRestore=()=>{groupAnchor.members.forEach((r,i)=>restoreTrack(r,tracksAfter[i]));restoreGroupStates(after);};
+      pushHistory(label+' · auto-key',undoRestore,redoRestore);
+      refreshTimeline();return;
+    }
+    for(const b of before)stageActorEdit(b.r,b.anchor);
+    const undoRestore=()=>{for(const b of before)restoreActor(b.r,b.anchor);restoreGroupStates(before.map(b=>({r:b.r,state:b.anchor})));};
+    const redoRestore=()=>{for(const a of after)restoreActor(a.r,a.state);restoreGroupStates(after);};
+    pushHistory(label+' ('+state.multi.length+' objects)',undoRestore,redoRestore);
+    refreshInspector();
+  }
+  function applyGroupKey(time){
+    if(state.multi.length<2)return false;
+    const members=state.multi.slice(),tracksBefore=members.map(r=>trackSnapshot(r));
+    for(const r of members){r.draft=null;applyObjectKey(r,time,false);}
+    const tracksAfter=members.map(r=>trackSnapshot(r));
+    pushHistory('apply keys to '+(members.length===2?'2 objects':members.length+' objects'),
+      ()=>members.forEach((r,i)=>restoreTrack(r,tracksBefore[i])),
+      ()=>members.forEach((r,i)=>restoreTrack(r,tracksAfter[i])));
+    return true;
+  }
+  function selectObject(r,scope='root',joint=state.joint){cameraWorkspace.editing=false;finishInputEdit();const changed=r!==selected;selected=r;if(r?.draft)r.draft.time=timeline.time;state.selectedKey=null;if(changed&&state.keySel.type==='pose')state.keySel=emptySelection();state.scope=r?.character?scope:'root';state.joint=joint;state.parts=state.scope==='part'?[joint]:[];$('#joint-select').value=joint;if(!r||!state.multi.includes(r))clearMulti();refreshOutliner();refreshInspector();refreshTimeline();setMode(['build','erase'].includes(state.mode)?'select':state.mode);}
   function showInspector(tab){$('.inspector-scroll').scrollTop=0;state.inspector=tab;$$('[data-inspector]').forEach(b=>b.classList.toggle('active',b.dataset.inspector===tab));for(const n of ['object','light','camera'])$('#inspect-'+n).hidden=n!==tab;syncDock();}
   function refreshOutliner(){
     const host=$('#outliner');host.replaceChildren();$('#obj-count').textContent=objects.length+1;
     const terrain=document.createElement('button');terrain.className='object-row';terrain.innerHTML=icon('grid')+'<span>Terrain</span><small>BLOCKS</small>';terrain.title='Select an individual block in the viewport';terrain.onclick=()=>{state.category='blocks';refreshLibrary();setMode('select');toast('Click a block to select it, or use Place / Remove in the library.');};host.append(terrain);
     for(const r of objects){
-      const b=document.createElement('button');b.className='object-row'+(r===selected?' active':'');b.dataset.object=r.id;
+      const b=document.createElement('button');b.className='object-row'+(r===selected||state.multi.includes(r)?' active':'');b.dataset.object=r.id;
       b.innerHTML=icon(r.character?'person':r.type==='lamp'?'sun':'cube');
       const label=document.createElement('span');label.textContent=r.name;b.append(label);
       if(r===selected){const s=document.createElement('small');s.textContent='SELECTED';b.append(s);}
+      else if(state.multi.includes(r)){const s=document.createElement('small');s.textContent='GROUP';b.append(s);}
       b.onclick=()=>{selectObject(r);showInspector('object');};b.ondblclick=()=>focusObject(r);host.append(b);
     }
   }
   function refreshInspector(){
-    refreshPartPanel();const r=selected;$('#object-empty').hidden=!!r;$('#object-controls').hidden=!r;$('#selection-type').textContent=r?(state.scope==='part'?'BODY PART':state.scope==='held'?'HELD ITEM':r.type.toUpperCase()):'NOTHING';
-    $('#selected-target').textContent=r?(r.character?r.name+' · '+targetLabel():r.name):'Click a block, tool or player';updateKeyUI();
+    refreshPartPanel();const r=selected;
+    const group=state.multi.length>1;
+    for(const id of ['obj-x','obj-y','obj-z','rot-x','rot-y','rot-z','obj-scale'])$('#'+id).disabled=group;
+    $('#object-empty').hidden=group?false:!!r;$('#object-controls').hidden=group?false:!r;
+    $('#selection-type').textContent=group?'MULTI · '+state.multi.length:r?(state.scope==='part'?'BODY PART':state.scope==='held'?'HELD ITEM':r.type.toUpperCase()):'NOTHING';
+    $('#selected-target').textContent=group?state.multi.length+' objects · group transform':r?(r.character?r.name+' · '+targetLabel():r.name):'Click a block, tool or player';updateKeyUI();
+    if(group){$('#target-name').textContent=state.multi.length+' objects (group)';$('#scope-actions').hidden=true;$('#object-name').value=r?r.name:'';$('#pending-edit').hidden=true;$('#keyframe-hint')&&0;return;}
     if(!r)return;
     if(r.character&&state.scope==='held'&&!r.character.mount.children.length)state.scope='root';
     const target=selectedTarget(),part=state.scope==='part',multi=part&&selectedParts().length>1;
@@ -661,7 +770,9 @@ async function main(){
   }
   function replaceKeys(type,owner,keys){if(type==='camera'){camTrack.keys=clone(keys);camTrack.rebuild();updatePath();refreshCameraKeys();}else if(owner){if(owner.character)owner.character.keys=clone(keys);else owner.keys=clone(keys);}refreshTimeline();refreshInspector();}
   function addPoseKey(){
-    finishInputEdit();const r=selected;if(!r){toast('Select a player, block, tool or model first.');return;}setPlaying(false);
+    finishInputEdit();setPlaying(false);
+    if(state.multi.length>1){applyGroupKey(timeline.time);refreshTimeline();refreshInspector();toast('Keys applied to '+state.multi.length+' objects at '+timeline.time.toFixed(2)+' s as one undoable step.');return;}
+    const r=selected;if(!r){toast('Select a player, block, tool or model first.');return;}
     const addedStart=applyObjectKey(r,timeline.time),keys=keysOf(r);
     state.selectedKey={type:'pose',index:keys.findIndex(k=>Math.abs(k.time-timeline.time)<=KEY_EPS),owner:r.id};refreshTimeline();refreshInspector();
     toast((r.character?'Pose':'Transform')+' applied at '+timeline.time.toFixed(2)+' s'+(addedStart?' · starting key added at 0 s':'')+'. Use From start to preview.');
@@ -913,19 +1024,41 @@ async function main(){
   function cameraViewData(){return{position:camera.position.toArray(),target:orbit.target.toArray(),quaternion:camera.quaternion.toArray(),fov:camera.fov};}
   function restoreCameraView(v){setCamera({position:new THREE.Vector3().fromArray(v.position),target:new THREE.Vector3().fromArray(v.target),quaternion:v.quaternion?new THREE.Quaternion().fromArray(v.quaternion):null,fov:v.fov});cameraWorkspace.update();}
   function editAnimationCamera(){if(cameraWorkspace.mode!=='scene')return;selectObject(null);cameraWorkspace.editing=true;showInspector('camera');setMode('translate');toast('Animation camera selected · W move / E rotate · Key camera to record');}
-  function switchCameraMode(mode){releaseNavKeys();cameraWorkspace.setMode(mode);gizmo.camera=viewCamera();gizmo.detach();orbit.enabled=cameraWorkspace.mode==='first-person'&&!nav.active&&!timeline.playing;cameraWorkspace.orbit.enabled=cameraWorkspace.mode==='scene'&&!nav.active;$('#camera-mode').value=cameraWorkspace.mode;$('#camera-guides').checked=cameraWorkspace.guides;$('#edit-animation-camera').disabled=cameraWorkspace.mode!=='scene';}
+  function switchCameraMode(mode){releaseNavKeys();cameraWorkspace.setMode(mode);gizmo.camera=viewCamera();gizmo.detach();orbit.enabled=cameraWorkspace.mode==='first-person'&&!nav.active&&!timeline.playing;cameraWorkspace.orbit.enabled=cameraWorkspace.mode==='scene'&&!nav.active;$('#camera-mode').value=cameraWorkspace.mode;$('#camera-mode').classList.toggle('scene-active',cameraWorkspace.mode==='scene');$('#camera-body-toggle').checked=cameraWorkspace.showBody;$('#camera-frustum-toggle').checked=cameraWorkspace.showFrustum;$('#edit-animation-camera').disabled=cameraWorkspace.mode!=='scene';$('#focus-animation-camera').disabled=false;}
+  // Move the editor navigation camera to a useful viewing spot aimed at the
+  // animation camera object. Never changes the animation camera itself.
+  function focusAnimationCamera(){
+    if(cameraWorkspace.mode!=='scene'){switchCameraMode('scene');toast('Scene View: the cyan object is the animation camera.');}
+    freeView();
+    const c=camera,editor=cameraWorkspace.editor,orbitCtrl=cameraWorkspace.orbit;
+    const dir=new THREE.Vector3();c.getWorldDirection(dir);
+    let side=new THREE.Vector3().crossVectors(dir,new THREE.Vector3(0,1,0));
+    if(side.lengthSq()<1e-6)side.set(1,0,0);side.normalize();
+    const target=c.position.clone().add(dir.clone().multiplyScalar(2.4));
+    editor.position.copy(c.position).addScaledVector(dir,-7.5).addScaledVector(side,4.5).add(new THREE.Vector3(0,3,0));
+    if(editor.position.distanceTo(c.position)<3)editor.position.copy(c.position).add(new THREE.Vector3(6,4,6));
+    orbitCtrl.target.copy(target);orbitCtrl.update();cameraWorkspace.update();
+    toast('Scene View focused on the animation camera.');
+  }
   $('#camera-mode').onchange=e=>{switchCameraMode(e.target.value);markDirty();};
-  $('#camera-guides').onchange=e=>{cameraWorkspace.guides=e.target.checked;cameraWorkspace.update();markDirty();};
+  $('#camera-body-toggle').onchange=e=>{cameraWorkspace.showBody=e.target.checked;cameraWorkspace.update();markDirty();};
+  $('#camera-frustum-toggle').onchange=e=>{cameraWorkspace.showFrustum=e.target.checked;cameraWorkspace.update();markDirty();};
+  $('#focus-animation-camera').onclick=focusAnimationCamera;
   $('#edit-animation-camera').onclick=editAnimationCamera;
   gizmo.addEventListener('dragging-changed',e=>{
     if(cameraWorkspace.editing){viewOrbit().enabled=!e.value&&!nav.active;if(e.value){setPlaying(false);cameraDragBefore=cameraViewData();}else if(cameraDragBefore){const before=cameraDragBefore,after=cameraViewData();pushHistory('move animation camera',()=>restoreCameraView(before),()=>restoreCameraView(after));cameraDragBefore=null;}return;}
+    if(state.multi.length>1&&gizmo.object===multiProxy){
+      orbit.enabled=false;cameraWorkspace.orbit.enabled=false;
+      if(!e.value){recordGroupChange(gizmo.mode==='translate'?'move objects':gizmo.mode==='rotate'?'rotate objects':'scale objects');markDirty();refreshInspector();}
+      return;
+    }
     orbit.enabled=cameraWorkspace.mode==='first-person'&&!e.value&&!nav.active;cameraWorkspace.orbit.enabled=cameraWorkspace.mode==='scene'&&!e.value&&!nav.active;if(e.value&&selected){finishInputEdit();prepEdit();
       // Moving or scaling parts uses the optional per-part channels; make them explicit so the edit is tracked.
       const c=selected.character;if(c&&state.scope==='part'&&gizmo.mode!=='rotate'){ensurePoseExtras(c.pose);applyPose(c,c.pose);}
       gizmoBefore=actorSnapshot(selected);orbit.enabled=false;beginPartDrag();}
     else if(selected&&gizmoBefore){partDrag=null;recordActorChange(selected,gizmoBefore,'transform '+selected.name);gizmoBefore=null;placePartProxy();refreshInspector();}
   });
-  gizmo.addEventListener('objectChange',()=>{if(cameraWorkspace.editing){const distance=cameraDragBefore?new THREE.Vector3().fromArray(cameraDragBefore.position).distanceTo(new THREE.Vector3().fromArray(cameraDragBefore.target)):6;orbit.target.copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(distance));cameraWorkspace.update();markDirty();return;}if(selected){applyPartDrag();syncTargetToActor();if(gizmoBefore)stageActorEdit(selected,gizmoBefore);refreshInspector();}});
+  gizmo.addEventListener('objectChange',()=>{if(cameraWorkspace.editing){const distance=cameraDragBefore?new THREE.Vector3().fromArray(cameraDragBefore.position).distanceTo(new THREE.Vector3().fromArray(cameraDragBefore.target)):6;orbit.target.copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(distance));cameraWorkspace.update();markDirty();return;}if(state.multi.length>1&&gizmo.object===multiProxy){updateMultiMembers();return;}if(selected){applyPartDrag();syncTargetToActor();if(gizmoBefore)stageActorEdit(selected,gizmoBefore);refreshInspector();}});
 
   // Pointer picking uses the viewport rectangle, never the full window.
   const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();
@@ -1150,8 +1283,62 @@ async function main(){
     if(['build','erase'].includes(state.mode)&&state.fill.on&&!ghostState&&e.button===0&&!state.pathMode){if(startFill(e)){e.preventDefault();try{canvas.setPointerCapture(e.pointerId);}catch(err){}return;}}
     if(state.mode==='terrain'&&!ghostState&&e.button===0){terrainStroke=new Map();terrainLast=null;const c=terrainCenter(e);if(c){terrainLast=c.join(',');stampTerrain(c);}}
     if(state.mode==='zone'&&!ghostState&&e.button===0){const a=zoneAnchor(e);if(a){zoneDrag={from:a,to:a};zoneTrimmed=false;zoneApply(a,a);}}
+    // Shift+drag across empty space draws a selection rectangle (Select/move modes).
+    if(!nav.active&&!ghostState&&!gizmo.axis&&e.button===0&&e.shiftKey&&!['build','erase','terrain','zone'].includes(state.mode)){
+      aim(e);scene.updateMatrixWorld(true);
+      const first=ray.intersectObjects([...world.meshes,...objectGroup.children,floor],true).find(h=>visibleMesh(h.object));
+      if(!first||first.object===floor){startRectSelect(e);return;}
+    }
   });
+  // ── Rectangle selection across the scene (Shift+drag from empty space) ──
+  let rectDrag=null;
+  function startRectSelect(e){
+    rectDrag={x0:e.clientX,y0:e.clientY,x1:e.clientX,y1:e.clientY};
+    try{canvas.setPointerCapture(e.pointerId);}catch(err){}
+    viewOrbit().enabled=false;
+    pointerDown=null;
+    const div=$('#select-rect');div.hidden=false;
+    updateRectSelect(e);
+  }
+  function updateRectSelect(e){
+    if(!rectDrag)return;
+    rectDrag.x1=e.clientX;rectDrag.y1=e.clientY;
+    const host=$('#viewport').getBoundingClientRect(),div=$('#select-rect');
+    const x=Math.min(rectDrag.x0,rectDrag.x1)-host.left,y=Math.min(rectDrag.y0,rectDrag.y1)-host.top;
+    div.style.left=x+'px';div.style.top=y+'px';div.style.width=Math.abs(rectDrag.x1-rectDrag.x0)+'px';div.style.height=Math.abs(rectDrag.y1-rectDrag.y0)+'px';
+  }
+  function finishRectSelect(e){
+    const drag=rectDrag;rectDrag=null;
+    $('#select-rect').hidden=true;
+    orbit.enabled=cameraWorkspace.mode==='first-person'&&!nav.active&&!timeline.playing;cameraWorkspace.orbit.enabled=cameraWorkspace.mode==='scene'&&!nav.active;
+    if(!drag)return;
+    const host=$('#viewport').getBoundingClientRect();
+    const left=Math.min(drag.x0,e.clientX)-host.left,right=Math.max(drag.x0,e.clientX)-host.left,top=Math.min(drag.y0,e.clientY)-host.top,bottom=Math.max(drag.y0,e.clientY)-host.top;
+    const pick=new THREE.Vector3(),box=new THREE.Box3();
+    const inside=[];
+    for(const r of objects){
+      if(!eligibleForMulti(r))continue;
+      box.setFromObject(r.root);
+      let hitIt=false;
+      for(const cx of [box.min.x,box.max.x])for(const cy of [box.min.y,box.max.y])for(const cz of [box.min.z,box.max.z]){
+        pick.set(cx,cy,cz).project(viewCamera());
+        const sx=(pick.x*.5+.5)*host.width,sy=(-pick.y*.5+.5)*host.height;
+        if(pick.z<1&&sx>=left&&sx<=right&&sy>=top&&sy<=bottom){hitIt=true;break;}
+      }
+      if(hitIt)inside.push(r);
+    }
+    if(e.shiftKey&&state.multi.length&&!inside.length){toast('Rectangle selected no new objects.');refreshMultiHelpers();return;}
+    const base=e.shiftKey&&state.multi.length?state.multi.filter(r=>!inside.includes(r)):[];
+    state.multi=[...base,...inside.filter(r=>!base.includes(r))];
+    if(!state.multi.length){selectObject(null);return;}
+    const primary=inside.find(r=>r.character)||inside[0];
+    if(!state.multi.includes(selected))selectObject(primary);
+    if(state.multi.length>1){rebaseGroupAnchor();refreshMultiHelpers();setMode('translate');toast(state.multi.length+' objects selected · transform handles move them together.');}
+    else{groupAnchor=null;disposeMultiHelpers();if(gizmo.object===multiProxy)gizmo.detach();}
+    refreshOutliner();refreshInspector();showInspector('object');
+  }
   canvas.addEventListener('pointermove',e=>{
+    if(rectDrag){updateRectSelect(e);return;}
     if(fillDrag){updateFill(e);return;}
     if(nav.look){lookBy(e.clientX-nav.look.x,e.clientY-nav.look.y);nav.look={x:e.clientX,y:e.clientY};return;}
     if(ghostState){hover.visible=false;brushRing.visible=false;updateGhost(e);return;}
@@ -1167,12 +1354,13 @@ async function main(){
     if(!['build','erase'].includes(state.mode)){hover.visible=false;brushRing.visible=false;return;}brushRing.visible=false;const hit=sceneHit(e),dig=state.mode==='erase'||e.buttons===2||e.shiftKey;hover.visible=editableHit(hit,dig);
     if(hover.visible){const rec=recordForHit(hit);hover.rotation.set(0,0,0);hover.scale.set(1,1,1);if(dig&&rec?.type==='block'){hover.position.copy(rec.root.position);hover.rotation.copy(rec.root.rotation);hover.scale.copy(rec.root.scale);}else{const p=cellFromHit(hit,dig);hover.position.set(p[0]+.5,p[1]+.5,p[2]+.5);}hover.material.color.set(dig?0xf5a179:0xd6f29e);}
   });
-  canvas.addEventListener('pointercancel',()=>{releaseNavKeys();pointerDown=null;});
+  canvas.addEventListener('pointercancel',()=>{releaseNavKeys();pointerDown=null;rectDrag=null;$('#select-rect').hidden=true;orbit.enabled=cameraWorkspace.mode==='first-person'&&!nav.active&&!timeline.playing;cameraWorkspace.orbit.enabled=cameraWorkspace.mode==='scene'&&!nav.active;});
   canvas.addEventListener('pointerleave',()=>{hover.visible=false;brushRing.visible=false;zoneDrag=null;if(terrainStroke)endTerrainStroke();});
   // Capture phase on the viewport: while a fill is being dragged the wheel sets its size instead of zooming.
   viewport.addEventListener('wheel',e=>{if(!fillDrag||e.target!==canvas)return;e.preventDefault();e.stopPropagation();if(e.shiftKey)state.fill.raise=clamp(state.fill.raise+(e.deltaY<0?1:-1),-32,32);else state.fill.layers=clamp(state.fill.layers+(e.deltaY<0?1:-1),1,32);syncFillUI();updateFill(e);},{capture:true,passive:false});
   canvas.addEventListener('wheel',e=>{if(nav.active&&!ghostState){e.preventDefault();dollyNav(e.deltaY);return;}if(!ghostState)return;e.preventDefault();ghostState.yOffset+=(e.deltaY<0?1:-1);applyGhostOffset();},{passive:false});
   canvas.addEventListener('pointerup',e=>{
+    if(rectDrag){finishRectSelect(e);pointerDown=null;return;}
     if(fillDrag){const down=pointerDown;pointerDown=null;if(finishFill(e,down)!=='click')return;pointerDown=down;}
     if(nav.look){nav.look=null;pointerDown=null;return;}
     if(state.mode==='terrain'&&!ghostState){if(terrainStroke)endTerrainStroke();pointerDown=null;return;}
@@ -1187,6 +1375,8 @@ async function main(){
     if(world.meshes.includes(hit.object)){selectTerrainBlock(hit);return;}
     const rec=recordForHit(hit);if(rec){
       let scope='root',part=state.joint;if(rec.character){if(hit.object.userData.item||hit.object.userData.toolTexture)scope='held';else if(hit.object.userData.part||hit.object.userData.joint){scope='part';part=hit.object.userData.part||hit.object.userData.joint;}}
+      // Ctrl/Shift-click adds or removes whole objects in the multi-selection.
+      if((e.shiftKey||e.ctrlKey||e.metaKey)&&scope==='root'&&!['build','erase'].includes(state.mode)){toggleMultiMember(rec);showInspector('object');return;}
       selectObject(rec,scope,part);showInspector('object');if(scope!=='root')setMode('rotate');
     }
   });
@@ -1403,6 +1593,7 @@ async function main(){
     try{const copy=await recordFromData(data);added(copy);}catch(e){toast('Could not duplicate: '+e.message);}
   }
   $('#duplicate').onclick=duplicateSelected;
+  $('#select-all-objects').onclick=selectAllSceneObjects;
   $('#add-tree').onclick=()=>added(addProp('tree',spawnPosition()));$('#add-rock').onclick=()=>added(addProp('rock',spawnPosition()));$('#add-lamp').onclick=()=>added(addProp('lamp',spawnPosition()));
   $('#focus').onclick=()=>focusObject(selected);$('#frame-scene').onclick=frameScene;$('#view-select').onchange=e=>cameraView(e.target.value);
   $('#grid-toggle').onclick=()=>{grid.visible=!grid.visible;$('#grid-toggle').classList.toggle('active',grid.visible);};
@@ -1516,6 +1707,49 @@ async function main(){
   $('#timeline-zoom-in').onclick=()=>zoomTimeline(1.4);$('#timeline-zoom-out').onclick=()=>zoomTimeline(1/1.4);$('#timeline-fit').onclick=()=>zoomTimeline(1,true);
   $('#timeline-zoom').oninput=e=>{const pps=.1*8000**(+e.target.value/100);zoomTimeline(pps/($('#track-area').offsetWidth/timeline.duration));};
   $('#timeline-auto-scroll').onchange=e=>{timelineView.autoScroll=e.target.checked;markDirty();};
+  // ── Timeline panel: draggable height, collapse and persistence ──
+  // The track area is a protected flex region: whatever window size or stored
+  // height, the toolbar stays visible and the lanes keep an editable minimum.
+  const TL_UI_KEY='studioTimelinePanel';
+  const timelineUI={height:0,collapsed:false};
+  try{const stored=JSON.parse(localStorage.getItem(TL_UI_KEY)||'{}');if(Number.isFinite(stored.height))timelineUI.height=Math.max(0,Math.round(stored.height));timelineUI.collapsed=!!stored.collapsed;}catch(e){}
+  function timelineChrome(){const t=$('.timeline-toolbar'),n=$('.timeline-navigation'),f=$('.timeline-footnote'),r=$('#ruler');return Math.round((t?.offsetHeight||46)+(n?.offsetHeight||31)+(f?.offsetHeight||24)+(r?.offsetHeight||24));}
+  function timelineBounds(){
+    const min=Math.max(150,timelineChrome()+86);
+    const header=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header'))||62;
+    const max=Math.max(min,Math.round(innerHeight-header-40));
+    return {min,max};
+  }
+  function clampTimelineHeight(h){const {min,max}=timelineBounds();return Math.round(Math.min(Math.max(h,min),max));}
+  function applyTimelinePanel(persist=true){
+    document.body.classList.toggle('timeline-collapsed',timelineUI.collapsed);
+    const root=document.documentElement;
+    if(timelineUI.collapsed)root.style.removeProperty('--timeline');
+    else if(timelineUI.height)root.style.setProperty('--timeline',clampTimelineHeight(timelineUI.height)+'px');
+    const btn=$('#timeline-collapse');
+    if(btn){btn.classList.toggle('active',timelineUI.collapsed);btn.title=timelineUI.collapsed?'Expand the timeline track area':'Collapse the track area (transport stays visible)';btn.setAttribute('aria-expanded',String(!timelineUI.collapsed));btn.firstElementChild.innerHTML='<use href="#i-chev-'+(timelineUI.collapsed?'up':'down')+'"/>';}
+    if(persist!==false){try{localStorage.setItem(TL_UI_KEY,JSON.stringify(timelineUI));}catch(e){}}
+  }
+  let timelineResize=null;
+  $('#timeline-resizer').addEventListener('pointerdown',e=>{
+    if(timelineUI.collapsed||document.body.dataset.device==='touch')return;
+    e.preventDefault();
+    timelineResize={startY:e.clientY,startH:$('.timeline').getBoundingClientRect().height||timelineUI.height||210};
+    try{$('#timeline-resizer').setPointerCapture(e.pointerId);}catch(err){}
+    document.body.classList.add('resizing-timeline');
+  });
+  $('#timeline-resizer').addEventListener('pointermove',e=>{
+    if(!timelineResize)return;
+    const h=clampTimelineHeight(timelineResize.startH+(timelineResize.startY-e.clientY));
+    timelineUI.height=h;document.documentElement.style.setProperty('--timeline',h+'px');
+  });
+  const endTimelineResize=()=>{if(!timelineResize)return;timelineResize=null;document.body.classList.remove('resizing-timeline');applyTimelinePanel();};
+  $('#timeline-resizer').addEventListener('pointerup',endTimelineResize);
+  $('#timeline-resizer').addEventListener('pointercancel',endTimelineResize);
+  $('#timeline-resizer').addEventListener('dblclick',()=>{if(timelineUI.collapsed)return;timelineUI.height=0;document.documentElement.style.removeProperty('--timeline');applyTimelinePanel();toast('Timeline height reset to the default.');});
+  $('#timeline-collapse').onclick=()=>{timelineUI.collapsed=!timelineUI.collapsed;applyTimelinePanel();};
+  addEventListener('resize',()=>{if(timelineUI.height&&!timelineUI.collapsed)document.documentElement.style.setProperty('--timeline',clampTimelineHeight(timelineUI.height)+'px');});
+  applyTimelinePanel(false);
   $('#timeline-scroll').onscroll=()=>{updateTimelineRange();if(timelineScrollFrame)return;timelineScrollFrame=requestAnimationFrame(()=>{timelineScrollFrame=0;drawTimelineRuler();if(!timelinePointerBusy&&(camTrack.keys.length>600||(selected&&keysOf(selected).length>600)))refreshTimeline();});};
   $('#timeline-scroll').addEventListener('wheel',e=>{if(e.ctrlKey||e.metaKey){e.preventDefault();zoomTimeline(e.deltaY<0?1.15:1/1.15);}else if(!e.deltaX){e.preventDefault();$('#timeline-scroll').scrollLeft+=e.deltaY;}},{passive:false});
   new ResizeObserver(()=>{refreshTimeline();updateTimeUI();}).observe($('#timeline-scroll'));
@@ -1861,7 +2095,7 @@ async function main(){
     else if(r.type==='import'||r.type==='voxel'||r.type==='image'||r.type==='mesh')data.object=r.root.toJSON();
     if(!r.character)data.keys=clone(r.keys||[]);if(r.animations?.length){data.animPlaying=!!r.animPlaying;data.mixerTime=r.mixer?.time||0;}return data;
   }
-  function projectData(){return{format:'bloxd-studio',version:PROJECT_VERSION,editorVersion:'4.2.0',editor:{...cameraWorkspace.data(),timeline:{...timelineView,scrollLeft:$('#timeline-scroll').scrollLeft},autoKey:state.autoKey,onion:state.onion,selection:objects.indexOf(selected),scope:state.scope,joint:state.joint,parts:state.parts},sceneName,audio:{...clone(soundtrack.state),preview:$('#preview-audio').checked,includeVideo:$('#record-audio').checked},world:{blocks:[...world.map],size:world.size,seed:world.seed},objects:objects.map(serializeRecord),light:clone(light),camera:{keys:clone(camTrack.keys),smooth:camTrack.smooth,distortion:clone(distKeys),view:{position:camera.position.toArray(),target:orbit.target.toArray(),quaternion:camera.quaternion.toArray(),fov:camera.fov}},images:imageAssets.map(a=>({id:a.id,name:a.name,url:a.url})),skybox:skyboxURL,customTextures:Object.fromEntries([...customBlockTex].map(([id,e])=>[id,e.url])),timeline:{...timeline,playing:false}};}
+  function projectData(){return{format:'bloxd-studio',version:PROJECT_VERSION,editorVersion:'4.3.0',editor:{...cameraWorkspace.data(),timeline:{...timelineView,scrollLeft:$('#timeline-scroll').scrollLeft},timelineUI:{height:timelineUI.height,collapsed:timelineUI.collapsed},autoKey:state.autoKey,onion:state.onion,selection:objects.indexOf(selected),scope:state.scope,joint:state.joint,parts:state.parts},sceneName,audio:{...clone(soundtrack.state),preview:$('#preview-audio').checked,includeVideo:$('#record-audio').checked},world:{blocks:[...world.map],size:world.size,seed:world.seed},objects:objects.map(serializeRecord),light:clone(light),camera:{keys:clone(camTrack.keys),smooth:camTrack.smooth,distortion:clone(distKeys),view:{position:camera.position.toArray(),target:orbit.target.toArray(),quaternion:camera.quaternion.toArray(),fov:camera.fov}},images:imageAssets.map(a=>({id:a.id,name:a.name,url:a.url})),skybox:skyboxURL,customTextures:Object.fromEntries([...customBlockTex].map(([id,e])=>[id,e.url])),timeline:{...timeline,playing:false}};}
   async function recordFromData(data){
     if(!data||!['character','tree','rock','lamp','tool','block','import','voxel','image','particles','mesh'].includes(data.type))throw new Error('Unknown object type.');
     const vec=v=>Array.isArray(v)&&v.length===3&&v.every(n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<1000);
@@ -1910,7 +2144,7 @@ async function main(){
     timeline.fps=clamp(Math.round(+data.timeline?.fps||24),1,120);timeline.interpolation=data.timeline?.interpolation||null;
     if(data.camera.view)setCamera({position:new THREE.Vector3().fromArray(data.camera.view.position),target:new THREE.Vector3().fromArray(data.camera.view.target),fov:data.camera.view.fov,quaternion:data.camera.view.quaternion?new THREE.Quaternion().fromArray(data.camera.view.quaternion):null});
     $('#preview-audio').checked=!!data.audio?.preview;$('#record-audio').checked=data.audio?.includeVideo!==false;syncAudioUI();
-    history.length=0;future.length=0;viewOverride=false;setSceneName(data.sceneName);selectObject(newObjects.find(r=>r.character)||newObjects[0]||null);updatePath();refreshAll();syncFov();cameraWorkspace.restore(data.editor);switchCameraMode(data.editor?.cameraMode);Object.assign(timelineView,{pixelsPerSecond:null,autoScroll:true},data.editor?.timeline);$('#timeline-auto-scroll').checked=timelineView.autoScroll!==false;state.autoKey=!!data.editor?.autoKey;state.onion=data.editor?.onion!==false;$('#auto-key').classList.toggle('active',state.autoKey);$('#onion-skin').checked=state.onion;const chosen=newObjects[data.editor?.selection];if(chosen)selectObject(chosen,data.editor?.scope||'root',data.editor?.joint||'head');if(chosen?.character&&Array.isArray(data.editor?.parts))state.parts=data.editor.parts.filter(p=>JOINTS[p]);refreshTimeline();$('#timeline-scroll').scrollLeft=data.editor?.timeline?.scrollLeft||0;markSaved('Project loaded');toast('Project opened. Continue editing or save a new copy.');
+    history.length=0;future.length=0;viewOverride=false;setSceneName(data.sceneName);selectObject(newObjects.find(r=>r.character)||newObjects[0]||null);updatePath();refreshAll();syncFov();cameraWorkspace.restore(data.editor);switchCameraMode(data.editor?.cameraMode);Object.assign(timelineView,{pixelsPerSecond:null,autoScroll:true},data.editor?.timeline);if(data.editor?.timelineUI&&Number.isFinite(data.editor.timelineUI.height)){timelineUI.height=Math.max(0,Math.round(data.editor.timelineUI.height));timelineUI.collapsed=!!data.editor.timelineUI.collapsed;applyTimelinePanel(false);}$('#timeline-auto-scroll').checked=timelineView.autoScroll!==false;state.autoKey=!!data.editor?.autoKey;state.onion=data.editor?.onion!==false;$('#auto-key').classList.toggle('active',state.autoKey);$('#onion-skin').checked=state.onion;const chosen=newObjects[data.editor?.selection];if(chosen)selectObject(chosen,data.editor?.scope||'root',data.editor?.joint||'head');if(chosen?.character&&Array.isArray(data.editor?.parts))state.parts=data.editor.parts.filter(p=>JOINTS[p]);refreshTimeline();$('#timeline-scroll').scrollLeft=data.editor?.timeline?.scrollLeft||0;markSaved('Project loaded');toast('Project opened. Continue editing or save a new copy.');
   }
   $('#save-project').onclick=()=>{try{if(loadingProject||importBusy)throw new Error('Wait for the project or model to finish loading before saving.');applyPendingEdits();const data=migrateProject(projectData());download(new Blob([JSON.stringify(data)],{type:'application/json'}),safeName(sceneName)+'.bloxd.json');markSaved('Project downloaded');toast('Project downloaded. Keep the JSON file to continue later.');}catch(e){toast('Could not save: '+e.message);}};
   $('#open-project').onclick=()=>$('#project-file').click();$('#project-file').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(projectDirty&&!confirm('Discard unsaved changes and load this project?'))return;if(file.size>40e6)throw new Error('Project is too large (40 MB limit).');await loadProject(JSON.parse(await file.text()));}catch(err){toast('Could not open project: '+err.message);}finally{e.target.value='';}};
@@ -2528,17 +2762,19 @@ async function main(){
     if(state.chainMode){setChainMode(false);toast('Chain cleared.');return true;}
     if(nav.active){setNavMode(false);return true;}
     if(activeSelectionKeys().length>1){clearKeySelection();toast('Key selection cleared.');return true;}
+    if(state.multi.length){clearMulti();toast('Multi-selection cleared.');return true;}
     if(document.body.classList.contains('panel-library')||document.body.classList.contains('panel-inspector')||document.body.classList.contains('panel-timeline')){closePanels();return true;}
     setMode('select');return true;
   }
   const ACTIONS={
     'nav.toggle':()=>setNavMode(!nav.active),
-    'camera.focus':()=>focusObject(selected),'camera.key':()=>addCameraKey(),'view.clean':()=>toggleClean(),
+    'camera.focus':()=>focusObject(selected),'camera.focusAnimation':()=>focusAnimationCamera(),'camera.key':()=>addCameraKey(),'view.clean':()=>toggleClean(),
     'anim.key':()=>keyframeSelection(),'anim.play':()=>setPlaying(!timeline.playing),'anim.start':()=>seek(0),'anim.end':()=>seek(timeline.duration),
     'edit.undo':()=>undo(),'edit.redo':()=>redo(),'edit.save':()=>$('#save-project').click(),
     'edit.copy':()=>copySelectedKeys(),'edit.paste':()=>keyClipboard?pasteClipboardKeys():false,
     'edit.duplicate':()=>{if(ensureKeySel()&&activeSelectionKeys().length)duplicateSelectedKeys();else duplicateSelected();},
     'edit.selectAll':()=>selectAllKeysInTrack(),
+    'edit.selectAllObjects':()=>selectAllSceneObjects(),
     'edit.delete':()=>{if(activeSelectionKeys().length>1)deleteSelectedKeys();else if(state.selectedKey)deleteKey(state.selectedKey.type,state.selectedKey.index);else deleteObject();},
     'edit.cancel':()=>cancelChain(),
     'edit.confirm':()=>{if(state.pathMode){bakePath();return true;}if(state.chainMode&&state.chainQueue.length){bakeSequence();return true;}return false;},
@@ -2633,6 +2869,9 @@ async function main(){
   $('#shortcuts-reset').onclick=()=>{shortcuts.resetAll();shortcutStatus('All shortcuts restored to their defaults.');};
   function openShortcuts(){$('#project-menu').hidden=true;recordingShortcut=null;shortcutStatus('');syncFlyUI();renderShortcutList();$('#shortcuts-dialog').showModal();}
   $('#open-shortcuts').onclick=openShortcuts;$('#help-shortcuts').onclick=()=>{$('#help-dialog').close();openShortcuts();};
+  const changelog=initChangelog();
+  $('#open-changelog').onclick=()=>{projectMenu.hidden=true;changelog.open();};
+  $('#help-changelog').onclick=()=>{$('#help-dialog').close();changelog.open();};
   shortcuts.onChange(()=>{refreshShortcutHints();if($('#shortcuts-dialog').open)renderShortcutList();});
   refreshShortcutHints();syncFillUI();
 
@@ -2726,15 +2965,20 @@ async function main(){
     video:{start:startRecording,cancel:stopRecording,get result(){return videoResult;},get busy(){return!!recording;}},
     get selected(){return selected;},get frames(){return frames;},get ready(){return frames>2;},get recording(){return!!recording;},catalog,itemDefs,getBlockPrototype,
     select:selectObject,setMode,setScope,selectedTarget,selectTerrainBlock,addProp,sceneHit,soundtrack,seek,setPlaying,updateLight,addPoseKey,addCameraKey,projectData,loadProject,parseModel,voxelise,equip,applyPose,neutralPose,presetPose,
-    get projectDirty(){return projectDirty;},saveRecovery,markDirty,timelineView,zoomTimeline,serializeRecord,handleFiles,undo,redo,frameScene,focusObject,refreshAll,editBlock,cellFromHit,history,cleanRender,actorSnapshot,restoreActor,makeTool,toolTextureName,setToolLighting,applyObjectKey,applyPendingEdits,revertEdit,keysOf,poseState,
+    get projectDirty(){return projectDirty;},saveRecovery,markDirty,timelineView,zoomTimeline,serializeRecord,handleFiles,undo,redo,frameScene,focusObject,refreshAll,editBlock,cellFromHit,history,cleanRender,actorSnapshot,restoreActor,makeTool,toolTextureName,setToolLighting,applyObjectKey,applyPendingEdits,revertEdit,keysOf,poseState,generateSceneCode:()=>codeBridge.generateSceneCode(),
     zone:{get from(){return zone.from;},get to(){return zone.to;},get cells(){return zone.cells;},get plan(){return zone.plan;},get config(){return zoneCfg;},select:zoneSelect,clear:zoneClear,refresh:zoneRefreshUI},
     cinematicBuild,MAX_ZONE_BLOCKS,
     shortcuts,keyframeSelection,rigAdapter,
     nav:{get active(){return nav.active;},set:setNavMode,lookBy,dolly:dollyNav,update:updateNav,release:releaseNavKeys,angles:lookAngles,state:nav,get maxPolar(){return orbit.maxPolarAngle;}},
     keys:{get selection(){return state.keySel;},set selection(v){state.keySel=v;refreshTimeline();},get clipboard(){return keyClipboard;},active:activeSelectionKeys,copy:copySelectedKeys,paste:pasteClipboardKeys,duplicate:duplicateSelectedKeys,remove:deleteSelectedKeys,selectAll:selectAllKeysInTrack,clear:clearKeySelection,ease:setSelectionEase},
     parts:{pick:pickPart,all:selectAllParts,get selected(){return selectedParts();},detach:setPartsDetached,toggleDetach:toggleDetachSelected,proxy:partProxy},
+    multi:{get selected(){return state.multi.slice();},get proxy(){return multiProxy;},toggle:toggleMultiMember,clear:clearMulti,selectAll:selectAllSceneObjects,apply:()=>updateMultiMembers(),record:recordGroupChange},
     fill:{state:state.fill,toggle:toggleFill,commit:commitFill,box:fillBox,resolvePlane,cancel:cancelFill,get drag(){return fillDrag;},preview:fillPreview}};
-  const codeBridge={catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS),textures:Object.keys(assetData.textures||{}).slice(0,1200)},snapshot:captureAIScene,apply:applyAIPlan,prepare:()=>{if(recording){toast('Stop recording first.');return false;}finishInputEdit();setPlaying(false);return true;}};
+  const codeCatalog={blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS),textures:Object.keys(assetData.textures||{}).slice(0,1200)};
+  const codeBridge={catalog:codeCatalog,snapshot:captureAIScene,apply:applyAIPlan,
+    generateSceneCode:()=>generateSceneCode({snapshot:captureAIScene(),catalog:codeCatalog,cameraKeys:clone(camTrack.keys),cameraSmooth:camTrack.smooth,sunKeys:clone(light.keys||[]),timelineState:{duration:timeline.duration,fps:timeline.fps,loop:timeline.loop},editorVersion:'4.3.0'}),
+    sceneFileName:()=>safeName(sceneName).replace(/\s+/g,'-').toLowerCase()||'bloxd-scene',
+    prepare:()=>{if(recording){toast('Stop recording first.');return false;}finishInputEdit();setPlaying(false);return true;}};
   window.STUDIO.code=initCodeStudio(codeBridge);
   const prompts=initPromptBuilder(codeBridge.catalog);
   initTours({prompts,code:window.STUDIO.code,syncDock,resize});

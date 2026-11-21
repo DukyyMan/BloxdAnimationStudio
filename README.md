@@ -2,6 +2,16 @@
 
 A small, local 3D animation editor with an editable **8-second Maple clearing**. Version 4.0 expands the public game asset library to 1,309 base block names / 4,032 block states, 1,110 item entries and 1,674 source-model choices. It retains reliable video downloads and direct shortest-path motion between saved poses. It includes a local Code Editor and editable command-plan validator for scripts generated externally. Version 2.1’s keyframe fixes, original-color tool textures, manual editing, model imports and MP3 export are retained.
 
+## 4.3 — timeline repair, camera visibility, multi-object editing and scene-to-code
+
+*Built on the 4.2 workspace; this update is on the working branch.*
+
+- **Timeline repair & panel control:** the track area is a protected flex region — the toolbar always stays visible above a ruler and editable lanes, at every window size. Drag the divider on the timeline's top edge to change its height (double-click resets to the default), or press the **˅ / ˄** button in the timeline toolbar to collapse just the track area while keeping the transport visible. The chosen height and collapsed state persist in the browser and travel inside saved projects; an unusable stored height is clamped back to an editable minimum.
+- **Built-in Changelog:** Project menu → **Changelog…** (also in Help). Every update from 2.1 to the current build is recorded with dates, versions, categories and release/development status, with search and category filters. Maintainers must add an entry for every future update — see the changelog policy in the [Modify / rebuild](#modify--rebuild) section below.
+- **Camera modes made obvious:** the viewport toolbar shows **First-person camera / Scene view (camera object)** with an active-mode highlight, plus a **Focus camera** button (also `Shift+F`). In Scene View the animation camera is a cyan, distance-scaled camera body with a lens ring, a forward arrow (viewing direction), an up arrow (orientation) and a frustum of the real camera. The Camera inspector offers separate **Camera object** and **Frustum** show/hide toggles. Clicking the body or **Edit camera** attaches the existing transform handles to the animation camera; moving the editor camera never moves the animation camera; scrubbing/playback moves the visible object.
+- **Multi-object selection:** Ctrl/Shift-click scene objects to add or remove them, Shift-drag from empty space for a rectangle selection, or use the outliner's select-all button (`Ctrl+Shift+A`) / `Escape` to clear. Selected groups get outlines and a shared transform pivot: move preserves spacing, rotate turns every object around the group centre, scale scales the arrangement uniformly without deforming members. Group moves are one undoable step, and **Apply pose/transform** keys the whole group at the playhead as one action. Single-object behavior is unchanged.
+- **Generate Code From Scene:** the Code Editor toolbar has **Generate code from scene** and **Download** buttons. It deterministically converts the actual scene into an editable script for the local scripting API — terrain fill runs, objects with exact ids/transforms, pose/object/camera/sun keys, lighting — with no AI and no network. Features the API cannot express (trees, imports, attachments, armor, held items, Hold easing, skybox, …) are listed honestly as "Not scriptable" instead of being faked. Generate twice from an unchanged scene and the output is byte-identical.
+
 ## 4.2 — save, camera workspace and long timelines
 
 - **Save Project** downloads an editable `.bloxd.json`, not a video. **Save as / download copy** names a new copy. The header shows unsaved changes; loading a different project or closing the tab warns before discarding edits.
@@ -136,6 +146,10 @@ Open the Code Editor to paste a script created externally, validate it and apply
 | Watch a zone build itself | **Blocks → 🎬 Zone**, drag a box, set the time, press **🎬 Build it cinematically** |
 | Hear/export sound | **Export → Sound track → MP3 audio** |
 | Export the moving picture | **Export → Render video → Download** |
+| See what changed between updates | **Project menu → Changelog…** |
+| See the animation camera in the scene | Camera mode → **Scene view (camera object)**, then **Focus camera** (`Shift+F`) |
+| Move several objects together | Ctrl/Shift-click objects (or Shift-drag a box), then use the handles; **Escape** clears |
+| Turn the scene into code | **Code Editor → Generate code from scene** |
 
 Rotation has exact XYZ angle fields, **+90°** buttons and optional **15° snap**. Selecting a terrain block converts that one instanced cell into an independent, centered block without duplicating it. That conversion, block placement/removal, transforms and animation-key edits support Undo/Redo.
 
@@ -246,6 +260,8 @@ The full public default pack and expanded live/catalog mappings are included. Ex
 
 ## Modify / rebuild
 
+<a id="modify--rebuild"></a>
+
 The repository root **is** the website. Run the modular app with Python 3:
 
 ```sh
@@ -279,6 +295,18 @@ Key source files:
 The LGPL MP3 library is replaceable. Its only local changes are an attribution comment and ESM export. Extract `vendor/lamejs-1.2.1-source.tgz`, modify or replace `vendor/lamejs.js`, and run `npm run build` to relink the standalone editor. The full application source is included; no restriction is imposed on reverse engineering for debugging modifications to the LGPL library.
 
 For regression tests, install Chromium with `npx playwright install --with-deps chromium`, start the server above, then run `npm test`. Run `npm run build && npm run test:offline` for file/offline/sandbox checks. `npm run test:video` uses `ffprobe` / `ffmpeg` (QA only) to decode and inspect the actual video downloads. See `TESTED.md` for the actual verified results.
+
+### Changelog policy (required for every update)
+
+The studio ships a built-in changelog (Project menu → **Changelog…**, also in Help). Its data lives in **`lib/changelog-data.js`** and is rendered by `lib/changelog.js`.
+
+**Every future feature update or bug-fix update MUST add an entry to `CHANGELOG` in `lib/changelog-data.js` as part of the same development task** — do not wait to be asked. Rules:
+
+1. Insert the new entry at the **top** of the array (reverse chronological order).
+2. Use the current `package.json` version as `version`, and the real completion/merge date (ISO `YYYY-MM-DD`) from git history or the merged report — never an invented date.
+3. Set `status` to `'release'` (merged/published), `'development'` (built on a branch, shipped inside a later release) or `'in progress'` (the current working branch, not yet merged; flip it to `'release'` when it merges).
+4. Group the concrete changes under `sections` with categories such as New Features, Improvements, Bug Fixes, Performance, Asset Library, Animation, Camera, Timeline or Code Editor. Only record work that actually exists in the code.
+5. When the update is merged, keep the entry and update its `status`/`note` rather than deleting it.
 
 ### Script authoring workflow
 
