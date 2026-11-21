@@ -10,6 +10,7 @@
     "test": "npm run test:code && node tests/studio.mjs && node tests/refinements.mjs && node tests/keyframe-fix.mjs && node tests/code-studio-browser.mjs && node tests/workspace-upgrade-browser.mjs && node tests/video-motion.mjs && node tests/catalog.mjs && npm run test:workflow",
     "test:offline": "node tests/offline-v2.mjs",
     "test:video": "node tests/video-motion.mjs",
+    "test:motion": "esbuild tests/motion-capture.mjs --bundle --platform=node --format=esm --alias:three=./vendor/three.module.js --outfile=node_modules/.motion-capture-test.mjs && node node_modules/.motion-capture-test.mjs",
     "test:catalog": "node tests/catalog.mjs",
     "test:code": "node tools/script/reference.mjs --check && node tests/script-reference.mjs && esbuild tests/code-studio-unit.mjs --bundle --platform=node --format=esm --alias:three=./vendor/three.module.js --outfile=node_modules/.code-studio-test.mjs && node node_modules/.code-studio-test.mjs",
     "build:interpreter": "esbuild tools/script/interpreter.ts --bundle --format=esm --target=es2020 --outfile=lib/script-interpreter.js --legal-comments=inline",

@@ -27,6 +27,7 @@ import { initCommandPanel } from './lib/ai-panel.js';
 import { initPromptBuilder } from './lib/prompt-builder.js';
 import { initTours } from './lib/studio-tour.js';
 import { initCodeStudio } from './lib/code-studio.js';
+import { initMotionCapture } from './lib/motion-capture-ui.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const clone=v=>JSON.parse(JSON.stringify(v));
@@ -673,6 +674,45 @@ async function main(){
     applyAtTime(timeline.time,true,true);
     refreshTimeline();refreshInspector();
     toast('Baked '+names+' · '+keyCount+' keys'+(targets.length>1?' on '+targets.length+' characters':'')+' · Undo restores.');
+  }
+  // ── Motion Capture: webcam/video -> MediaPipe landmarks -> native pose keys ──
+  // Insertion mirrors bakeClipInto exactly: snapshot, putKey loop, one Undo step.
+  let mocapPreviewSnap=null;
+  const mocap=initMotionCapture({
+    toast,timeline,
+    getTargets:()=>objects.filter(r=>r.character),
+    getSelected:()=>selected,
+    previewBase:r=>({position:r.root.position.toArray(),yaw:r.root.rotation.y}),
+    previewSample:(r,sample)=>{
+      if(!sample){if(mocapPreviewSnap){restoreActor(r,mocapPreviewSnap);mocapPreviewSnap=null;}else applyAtTime(timeline.time,true,true);return;}
+      if(!mocapPreviewSnap)mocapPreviewSnap=actorSnapshot(r);
+      setPlaying(false);
+      setTransform(r.root,{position:sample.position,rotation:sample.rotation,scale:[1,1,1]});
+      r.character.pose=copyPose(sample.pose);applyPose(r.character,sample.pose);
+    },
+    lastKeyTime:r=>{const ks=keysOf(r);return ks.length?Math.max(...ks.map(k=>k.time)):0;},
+    countKeysInRange:(r,a,b)=>keysOf(r).filter(k=>k.time>=a-1e-6&&k.time<=b+1e-6).length,
+    insertKeys:(r,keys,{replace,range})=>{
+      finishInputEdit();setPlaying(false);
+      const before=trackSnapshot(r);let removed=0;
+      if(replace&&range){
+        const kept=keysOf(r).filter(k=>!(k.time>=range[0]-1e-6&&k.time<=range[1]+1e-6));
+        removed=keysOf(r).length-kept.length;
+        if(r.character)r.character.keys=kept;else r.keys=kept;
+      }
+      if(keys.length)extendTimeline(keys.at(-1).time);
+      for(const k of keys)putKey(keysOf(r),k);
+      afterBakeFlags(r);
+      bakeHistory('insert motion capture',[{r,before}]);
+      applyAtTime(timeline.time,true,true);refreshTimeline();refreshInspector();
+      return{inserted:keys.length,removed};
+    },
+    focusRecord:(r,t)=>{selectObject(r);seek(clamp(t,0,timeline.duration));},
+  });
+  $('#mocap-launch').onclick=()=>{setPlaying(false);mocap?.open();};
+  for(const[id,fmt]of[['mocap-smoothing',v=>v.toFixed(2)+' s'],['mocap-scale',v=>v.toFixed(1)+'×'],['mocap-hsens',v=>v.toFixed(1)+'×']]){
+    const input=$('#'+id),label=$('#'+id+'-value');
+    if(input&&label)input.addEventListener('input',()=>label.textContent=fmt(parseFloat(input.value)||0));
   }
   let poseClip=null;
   function selectedPoseKey(){
@@ -2181,7 +2221,7 @@ async function main(){
     video:{start:startRecording,cancel:stopRecording,get result(){return videoResult;},get busy(){return!!recording;}},
     get selected(){return selected;},get frames(){return frames;},get ready(){return frames>2;},get recording(){return!!recording;},catalog,itemDefs,getBlockPrototype,
     select:selectObject,setMode,setScope,selectedTarget,selectTerrainBlock,addProp,sceneHit,soundtrack,seek,setPlaying,updateLight,addPoseKey,addCameraKey,projectData,loadProject,parseModel,voxelise,equip,applyPose,neutralPose,presetPose,
-    serializeRecord,handleFiles,undo,redo,frameScene,focusObject,refreshAll,editBlock,cellFromHit,history,cleanRender,actorSnapshot,restoreActor,makeTool,toolTextureName,setToolLighting,applyObjectKey,applyPendingEdits,revertEdit,keysOf,poseState,
+    serializeRecord,handleFiles,undo,redo,frameScene,focusObject,refreshAll,editBlock,cellFromHit,history,cleanRender,actorSnapshot,restoreActor,makeTool,toolTextureName,setToolLighting,applyObjectKey,applyPendingEdits,revertEdit,keysOf,poseState,motionCapture:mocap,
     zone:{get from(){return zone.from;},get to(){return zone.to;},get cells(){return zone.cells;},get plan(){return zone.plan;},get config(){return zoneCfg;},select:zoneSelect,clear:zoneClear,refresh:zoneRefreshUI},
     cinematicBuild,MAX_ZONE_BLOCKS};
   const codeBridge={catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS),textures:Object.keys(assetData.textures||{}).slice(0,1200)},snapshot:captureAIScene,apply:applyAIPlan,prepare:()=>{if(recording){toast('Stop recording first.');return false;}finishInputEdit();setPlaying(false);return true;}};
