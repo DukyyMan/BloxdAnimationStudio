@@ -26,7 +26,7 @@ try{
  const keysBefore=await get(()=>JSON.stringify(STUDIO.camTrack.keys));
  await page.selectOption('#camera-mode','scene');
  check('editor camera uses the real viewport aspect ratio',await get(()=>{const v=document.querySelector('#viewport');return Math.abs(STUDIO.cameraWorkspace.editor.aspect-v.clientWidth/v.clientHeight)<1e-6;}));
- check('scene mode exposes recognizable body and frustum',await get(()=>STUDIO.cameraWorkspace.body.visible&&STUDIO.cameraWorkspace.frustum.visible&&STUDIO.cameraWorkspace.body.children.filter(o=>o.isMesh).length===2));
+ check('scene mode exposes recognizable body and frustum',await get(()=>STUDIO.cameraWorkspace.body.visible&&STUDIO.cameraWorkspace.frustum.visible&&STUDIO.cameraWorkspace.body.children.filter(o=>o.isMesh).length===5&&STUDIO.cameraWorkspace.body.children.some(o=>o.type==='ArrowHelper')&&STUDIO.cameraWorkspace.body.children.some(o=>o.type==='ArrowHelper'&&o.userData.isUp)));
  const animationBefore=await get(()=>STUDIO.camera.position.toArray());
  await page.locator('#nav-mode').click();
  const moves={};for(const key of ['w','s','a','d','Space','e','q','c']){const a=await pos();await page.keyboard.down(key);await wait(320);await frames(4);await page.keyboard.up(key);const b=await pos();moves[key]=dist(a,b);await wait(100);check(key+' moves editor camera and stops immediately',moves[key]>.15&&dist(b,await pos())<1e-6,{distance:moves[key],drift:dist(b,await pos())});}
