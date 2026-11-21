@@ -51,8 +51,6 @@ body.panel-timeline .dock{bottom:calc(var(--timeline) + 12px)}
 .dock-btn svg{width:18px;height:18px;stroke-width:1.6}
 .dock-btn:hover{background:#2e3a39;color:#e8f3e2}
 .dock-btn.active{background:var(--lime);border-color:var(--lime);color:#243222}
-.dock-btn.ai{color:#e3c6f4;border-color:#5c4767}
-.dock-btn.ai:hover{background:#3a2c42}
 .project-menu{position:fixed;left:50%;transform:translateX(-50%);bottom:66px;z-index:41;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px;display:flex;flex-direction:column;gap:2px;min-width:200px;box-shadow:0 18px 50px #0008}
 body.panel-timeline .project-menu{bottom:calc(var(--timeline) + 64px)}
 .project-menu button{display:flex;align-items:center;gap:9px;background:transparent;border:0;border-radius:7px;padding:10px 12px;font-size:11px;color:#c4d2cd;text-align:left}
@@ -253,3 +251,59 @@ body[data-device="touch"] .bake-options label{padding:6px 8px;font-size:11px}
 .prompt-dialog{width:min(1040px,95vw);max-height:92vh;overflow:auto}.prompt-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:20px}.prompt-grid section{min-width:0}.prompt-grid label{display:grid;gap:5px;margin:10px 0;font-weight:600}.prompt-grid :is(textarea,select,input){width:100%;padding:8px;color:inherit;font:inherit;border:1px solid #a6b6aa;border-radius:6px;background:#f8faf6}.prompt-grid textarea{resize:vertical}.prompt-grid [hidden],#prompt-regenerate[hidden]{display:none}.prompt-grid section:nth-child(2){align-self:start;position:sticky;top:0}.prompt-grid #prompt-preview{height:48vh;font:13px/1.5 monospace;background:#1b2b28;color:#e1ede5}.prompt-tip{border-left:3px solid #769981;padding-left:10px}#script-reference{max-height:50vh;overflow:auto}@media(max-width:700px){.prompt-grid{grid-template-columns:1fr}.prompt-grid #prompt-preview{height:34vh}}@media(min-width:701px){#prompt-fields{max-height:48vh;overflow:auto;padding-right:7px}}
 #tour-overlay{position:fixed;inset:0;margin:0;width:100vw;height:100dvh;max-width:none;max-height:none;padding:0;border:0;background:transparent;overflow:hidden;box-shadow:none}#tour-overlay::backdrop{background:transparent;backdrop-filter:none}#tour-hole{position:fixed;border:3px solid #87dba6;border-radius:6px;box-shadow:0 0 0 200vmax #081713ac;pointer-events:none}#tour-card{position:fixed;left:50%;transform:translateX(-50%);width:min(390px,94vw);max-height:80vh;overflow:auto;background:#1e2c29;color:#eef8f1;border:1px solid #87ad96;border-radius:12px;padding:15px;box-shadow:0 8px 30px #0007}#tour-card h3{margin:6px 0}#tour-card p{margin:6px 0 12px}#tour-card .code-toolbar{justify-content:flex-end}#tour-skip{margin-right:auto}
 .prompt-dialog{max-width:min(1040px,95vw)}.code-dialog{max-width:min(1100px,96vw)}.prompt-grid :is(textarea,select,input){background:var(--bg);color:var(--text);border-color:#47574f}.diagnostic{white-space:normal}.code-dialog button:focus-visible,.prompt-dialog button:focus-visible{outline:2px solid var(--lime)}#error-list .diagnostic{border-radius:4px;background:#2d2526}.code-dialog .code-actions{flex-wrap:wrap}.prompt-dialog #prompt-custom{background:var(--lime);color:#223024}
+/* ── v4.1 additions: navigation mode, multi-key selection, part panel, drag-fill, shortcuts ── */
+body.nav-mode #scene{cursor:grab}
+body.nav-mode #scene:active{cursor:grabbing}
+#nav-mode.active{background:#394730;color:var(--lime);box-shadow:0 0 0 1px #8fba6088 inset}
+.key-marker.primary-key{box-shadow:0 0 0 3px #bed97d88}
+.key-marker.key-flash{animation:key-flash .7s ease-out}
+@keyframes key-flash{0%{box-shadow:0 0 0 0 #f2f6ce;filter:brightness(1.6)}100%{box-shadow:0 0 0 10px #f2f6ce00;filter:none}}
+.key-box{position:absolute;z-index:4;border:1px dashed #d0ee8e;background:#d0ee8e1c;border-radius:3px;pointer-events:none}
+.key-selection-info{color:#c9dca8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fill-label{position:absolute;z-index:40;pointer-events:none;background:#1b2622ee;border:1px solid #7e9c5b;color:#e0efcd;font:600 10px ui-monospace,monospace;padding:5px 8px;border-radius:5px;white-space:nowrap;box-shadow:0 4px 16px #0003}
+.fill-label.warn{border-color:#d6a84b;color:#ffe2a6}
+.fill-panel input[type=number]{width:56px;font-size:10px;padding:5px}
+.fill-note{margin:0}
+.part-panel{position:absolute;right:16px;top:118px;z-index:5;width:176px;background:#1c2328ee;border:1px solid #3d5148;border-radius:10px;box-shadow:0 10px 30px #0004;backdrop-filter:blur(4px);color:var(--text);user-select:none}
+.part-panel-head{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 10px;cursor:move;border-bottom:1px solid #303a41;touch-action:none}
+.part-panel-head .eyebrow{font-size:7px;letter-spacing:1.2px;color:#8fba60}
+.part-panel-head b{flex:1;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.part-panel-head .icon-btn{width:20px;height:20px;padding:0;font-size:13px;line-height:1}
+.part-panel.collapsed .part-panel-body{display:none}
+.part-panel.collapsed .part-panel-head{border-bottom:0}
+.part-panel-body{padding:8px}
+#part-diagram{display:block;width:100%;height:auto;max-height:190px}
+#part-diagram .part-node{cursor:pointer;outline:none}
+#part-diagram .part-node rect{fill:#2b363b;stroke:#55666b;stroke-width:.7;transition:fill .12s}
+#part-diagram .part-node text{fill:#a9bab3;stroke:none;font:600 3.2px Inter,ui-sans-serif,sans-serif;text-anchor:middle;pointer-events:none}
+#part-diagram .part-node:hover rect,#part-diagram .part-node:focus-visible rect{fill:#36474a;stroke:#9fe3ff}
+#part-diagram .part-node.selected rect{fill:#3e5a3a;stroke:#d0ee8e;stroke-width:1.1}
+#part-diagram .part-node.selected text{fill:#f1fbdc}
+#part-diagram .part-node.primary rect{stroke:#fff;stroke-width:1.4}
+#part-diagram .part-node.detached rect{stroke-dasharray:2 1.2;stroke:#f0ad7d}
+.part-panel-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:6px}
+.part-panel-actions button{font-size:8px;padding:5px 2px}
+.part-panel-status{margin:6px 0 0;font-size:8px;line-height:1.4;color:#8a9a9f}
+body.clean .part-panel,body.clean .fill-label{display:none}
+body[data-device=touch] .part-panel{width:150px;top:auto;bottom:12px;right:8px}
+.shortcuts-dialog{width:min(720px,94vw)}
+.shortcut-settings{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin:10px 0;padding:10px;background:#182326;border:1px solid #3d5148;border-radius:8px;font-size:10px}
+.shortcut-settings label{display:flex;align-items:center;gap:6px;color:#a7bcaa}
+.shortcut-settings input[type=range]{width:90px}
+.shortcut-conflict{display:flex;gap:8px;align-items:center;padding:8px 10px;margin:8px 0;border:1px solid #d6a84b;background:#3a3020;border-radius:7px;color:#ffe2a6;font-size:10px}
+.shortcut-conflict span{flex:1}
+.shortcut-status{min-height:14px;font-size:10px;color:#a7bcaa;margin:6px 0}
+.shortcut-status.error{color:#f5a179}
+.shortcut-list{display:grid;gap:10px;max-height:52vh;overflow:auto;padding-right:4px}
+.shortcut-group h3{margin:4px 0 4px;font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:#8fba60}
+.shortcut-row{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px}
+.shortcut-row:hover{background:#252e34}
+.shortcut-row.recording{background:#2f3a26;box-shadow:0 0 0 1px #8fba60 inset}
+.shortcut-label{flex:1;font-size:10px;display:flex;flex-direction:column;gap:1px}
+.shortcut-label small{font-size:8px;color:#6f8379}
+.shortcut-keys{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;align-items:center}
+.shortcut-chip{display:inline-flex;border:1px solid #4a5a55;border-radius:5px;overflow:hidden}
+.shortcut-chip button{border:0;border-radius:0;padding:3px 6px;font:600 9px ui-monospace,monospace;background:#2a3439}
+.shortcut-chip .chip-remove{padding:3px 5px;color:#f0ad7d;border-left:1px solid #4a5a55}
+.chip-add,.chip-reset{padding:3px 7px;font-size:9px}
+.shortcut-none{font-size:9px;color:#6f8379}

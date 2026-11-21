@@ -1,3 +1,24 @@
+# Development branch check: v4.1 features (21 November 2026)
+
+Run in a sandbox with Chromium and software WebGL (about 2–27 fps). These results are not from a release.
+
+| Suite | Result |
+|---|---|
+| `tests/v41-unit.mjs` (shortcuts, fly maths, key selection, fill boxes, part move/scale/detach, pending edits) | **77 / 77** |
+| `tests/v41-features-browser.mjs` (real keyboard/mouse: fly mode, pitch, Space key, multi-select/copy/paste/move, parts panel and group gizmo, detach save/load, shortcut settings, drag-fill) | **90 / 90** |
+| refinements / keyframe-fix / code-studio-browser / catalog / workflow / code unit / 10 smoke suites | all pass |
+| workspace-upgrade-browser | passed twice when run alone; failed once inside the long chained run (cause not captured) |
+| studio.mjs | fails at the **Save project** click. In this sandbox the click takes about 27.8 s against a 30 s limit, and the unchanged base commit measured the same 27.7 s (serialising the imported GLB is slow under software rendering). |
+| video-motion | 19 / 20. `ffprobe` is not installed in this sandbox (same as the base commit). |
+
+Two tests were changed because the unused AI command dialog was removed:
+- `workspace-upgrade-browser`: the plan-skip checks now call the command compiler that remains.
+- `offline-v2`: now asserts that the dialog is absent.
+
+`tests/gemini.mjs` was already stale before this change: no Gemini code existed at the base commit.
+
+---
+
 # Historical verification — Bloxd Studio 4.0
 
 This report records the 23 October 2026 release, not the current build. The Gemini integration described below has since been removed. See the current test scripts and CODE-EDITOR.md for the local scripting workflow.

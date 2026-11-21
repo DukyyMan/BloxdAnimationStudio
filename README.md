@@ -104,7 +104,7 @@ If you really want revolutions, select **Motion between saved poses → Full spi
 
 ## Local scripting and command plans
 
-Open the Code Editor to paste a script created externally, validate it and apply editable scene data. Open **Local command plans** to paste or try a JSON command plan without a network connection. See [CODE-EDITOR.md](CODE-EDITOR.md) for the supported API, examples, update/replace behavior and limitations. No API key is required.
+Open the Code Editor to paste a script created externally, validate it and apply editable scene data. See [CODE-EDITOR.md](CODE-EDITOR.md) for the supported API, examples, update/replace behavior and limitations. No API key is required.
 
 ## Quick controls
 
@@ -147,13 +147,32 @@ If an older saved project contains only a later key, its original pre-edit pose 
 
 ### Shortcuts
 
-- **V** Select; **B** Place blocks; **X** Remove blocks; **Z** cinematic build zone; **T** terrain brushes.
-- **W / E / R** move / rotate / scale. **F** focus selection.
+All shortcuts can be changed in **Project menu → Keyboard shortcuts** (or Help → Keyboard shortcuts). There you can change, remove, add or restore any binding. Conflicts ask you to Replace or Cancel, and your choices are saved in this browser. These are the defaults:
+
+- **V** Select; **B** Place blocks; **X** Remove blocks; **G** drag-fill; **Z** cinematic build zone; **T** terrain brushes.
+- **W / E / R** move / rotate / scale. **F** focus selection. **Alt+A** select all body parts.
 - Drag to orbit; right-drag to pan; scroll to zoom.
-- **Space** play/pause; **H** clean view / return to editor.
-- **Ctrl+Z / Ctrl+Shift+Z** Undo / Redo; **Ctrl+D** duplicate.
-- **Delete** removes the selected timeline key, or otherwise the selected object.
-- **Ctrl+S** downloads the project JSON. Use **Open** to continue later.
+- **Space** adds a keyframe for the selected character, body parts or object at the playhead. You can switch Space to play/pause, or to nothing, in settings. **P** play/pause; **Home / End** jump to the start or end; **H** clean view.
+- **N** navigation (fly) mode:
+  - **W A S D** move relative to the view; **Space / E** up; **Q / C** down; hold **Shift** to go faster. Drag to look around.
+  - Down is not on Ctrl by default because browsers reserve Ctrl+W, which closes the tab. You can bind Ctrl to Fly down in settings.
+  - **Shift+K** keys the camera, including its pitch.
+- **Ctrl+Z / Ctrl+Shift+Z** Undo / Redo; **Ctrl+S** downloads the project JSON.
+- Timeline keys:
+  - Click a key to select it; **Ctrl-click** toggles a key; **Shift-click** selects a range; **Shift-drag** draws a selection box; **Ctrl+A** selects all; **Esc** clears the selection.
+  - **Ctrl+C / Ctrl+V** copy keys and paste them at the playhead, keeping their timing and easing. **Ctrl+D** duplicates the selected keys, or the selected object when no key is selected.
+  - Drag any selected key to move the whole group. **Delete** removes the selected keys, or otherwise the selected object.
+- No shortcut fires while you type in a field, the Code Editor or any dialog.
+
+### Body parts, drag-fill and mobs
+
+- **Parts panel:** selecting a character opens a small diagram (draggable and collapsible) of its rig's real parts: head, torso, arms, elbows, hips and knees.
+  - Click a part, or Ctrl/Shift-click to select several, then use the W/E/R gizmo. Moving and scaling parts are stored in the pose keys (`pose.move`, `pose.scale`).
+  - **Detach** frees a part from its parent joint without rebuilding the rig. Its keys are converted so the animation looks the same, and **Reattach** reverses it. Detached parts are saved with the project. Older projects load unchanged.
+- **Drag-fill (G):** drag over a face to fill a grid-snapped rectangle; the label shows the size and block count.
+  - Use the panel or the mouse wheel to set layers and Shift+wheel to raise or lower the fill. **Esc** cancels. Fills are limited to 4,096 blocks and 64 per side.
+  - Floors, walls and ceilings follow the face you start on, or you can force a plane. Each fill is one Undo step. A plain click still places a single block.
+- **Mobs:** not included. No authentic Bloxd mob models could be verified; see [MOBS.md](MOBS.md).
 
 ## What changed about the tools?
 
