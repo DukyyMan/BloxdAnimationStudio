@@ -4,7 +4,12 @@ import { TransformControls } from './vendor/controls/TransformControls.js';
 import { GLTFExporter } from './vendor/exporters/GLTFExporter.js';
 import { loadAssets, blockDefs, assetData, textures, toolNames, toolIcon, textureURL, makeTool, makeLamp, makeBlock, pixelTexture, toolTextureName, setToolLighting, decode64, catalog, itemDefs, blockIcon, fallbackIcon, renderAssetThumbnail, resolveBlock, baseTexture, updateAssetAnimations, getBlockPrototype } from './lib/assets.js';
 import { VoxelWorld, createTree, createRock } from './lib/world.js';
-import { JOINTS, createCharacter, copyPose, neutralPose, presetPose, applyPose, equip } from './lib/character.js';
+import { JOINTS, createCharacter, copyPose, neutralPose, presetPose, applyPose, equip, ensurePoseExtras, partMove, setDetached, jointRootMatrix, rebasePose } from './lib/character.js';
+import { ShortcutManager, SHORTCUT_ACTIONS, CONTEXT_LABELS, comboFromEvent, comboLabel, keyName, isModifierName, isTypingTarget } from './lib/shortcuts.js';
+import { FLY_DEFAULTS, anglesFromDirection, directionFromAngles, applyLook, moveVector, smoothVelocity, PITCH_LIMIT } from './lib/fly-camera.js';
+import { emptySelection, isSelected, selectOnly, toggleKey, rangeSelect, rectSelect, selectAll as selectAllKeys, selectedKeys, copyKeys, pasteKeys, moveKeys, deleteKeys, duplicateStart, clampDelta, round2 } from './lib/key-selection.js';
+import { FILL_MAX_BLOCKS, resolvePlane, fillBox, describeBox, boxCells, normalAxis } from './lib/block-fill.js';
+import { rigAdapter, topLevelParts } from './lib/rig.js';
 import { CameraTrack, samplePose, sampleTransform, sampleScalar, putKey, KEY_EPS } from './lib/tracks.js';
 import { bakeClip, bakeWalkPath, mirrorPose, planSequence, CLIP_DEFAULTS } from './lib/anim-clips.js';
 import { BUILD_ORDERS, BUILD_ORDER_LABELS, BUILD_STYLES, BUILD_STYLE_LABELS, BUILD_EASES, BUILD_EASE_LABELS, MAX_ZONE_BLOCKS, ZONE_DEFAULTS, normalizeRegion, zoneCells, buildEntries, planBuild, planSummary, cameraPlan, zoneWarning } from './lib/cinematic-build.js';
@@ -23,7 +28,7 @@ import { chooseVideoConfig, renderVideoFrames, renderRealtimeVideo } from './lib
 import { buildTimeline, timelineAt, fitRect, sanitizeTrim, MAX_ASSEMBLY_SECONDS } from './lib/video-editor.js';
 import { Soundtrack } from './lib/audio.js';
 import { plainState, stageEdit, mergeEdit, keyFromState, stateFromKey, validateDraft } from './lib/key-edit.js';
-import { initCommandPanel } from './lib/ai-panel.js';
+import { compilePlan, makeSceneContext } from './lib/ai-commands.js';
 import { initPromptBuilder } from './lib/prompt-builder.js';
 import { initTours } from './lib/studio-tour.js';
 import { initCodeStudio } from './lib/code-studio.js';
@@ -78,7 +83,20 @@ async function main(){
   let pathLine=null;
   const gizmo=new TransformControls(camera,canvas);gizmo.setSize(.85);helpers.add(gizmo);
   const objects=[];let selected=null,serial=0,frames=0;
-  const state={mode:'select',scope:'root',joint:'head',toolAction:'place',category:'blocks',block:'grass',inspector:'object',selectedKey:null,clean:false,libraryPage:0,libraryGroup:'',libraryAdvanced:false,pathMode:false,autoKey:false,onion:true,chainMode:false,chainQueue:[]};
+  const state={mode:'select',scope:'root',joint:'head',parts:[],toolAction:'place',category:'blocks',block:'grass',inspector:'object',selectedKey:null,keySel:emptySelection(),clean:false,libraryPage:0,libraryGroup:'',libraryAdvanced:false,pathMode:false,autoKey:false,onion:true,chainMode:false,chainQueue:[],fill:{on:false,plane:'auto',layers:1,raise:0}};
+  // Centralized keyboard shortcuts (persisted per browser) and navigation (fly) camera state.
+  let shortcutStore=null;try{shortcutStore=window.localStorage;}catch(e){}
+  const shortcuts=new ShortcutManager({storage:shortcutStore});
+  const nav={active:false,held:new Set(),velocity:[0,0,0],look:null,speed:FLY_DEFAULTS.speed,sensitivity:1,invert:false};
+  try{const saved=JSON.parse(shortcutStore?.getItem('studioFlyV1')||'null');if(saved){nav.speed=clamp(+saved.speed||FLY_DEFAULTS.speed,1,30);nav.sensitivity=clamp(+saved.sensitivity||1,.5,3);nav.invert=!!saved.invert;}}catch(e){}
+  let keyClipboard=null,fillDrag=null;
+  // Multi-part gizmo pivot: TransformControls drives this proxy and the delta is applied to every selected part.
+  const partProxy=new THREE.Object3D();partProxy.name='Part group pivot';let partDrag=null;
+  const partHighlights=new THREE.Group();partHighlights.name='Selected part outlines';scene.add(partProxy);helpers.add(partHighlights);
+  // Drag-fill preview: translucent box plus crisp edges, sized to the grid-snapped fill.
+  const fillPreview=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshBasicMaterial({color:0xd6f29e,transparent:true,opacity:.2,depthWrite:false}));
+  fillPreview.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),new THREE.LineBasicMaterial({color:0xd6f29e,transparent:true,opacity:.95,depthTest:false})));
+  fillPreview.visible=false;fillPreview.renderOrder=3;fillPreview.name='Fill preview';helpers.add(fillPreview);
   const timeline={time:0,duration:8,playing:false,loop:false,cameraEnabled:true,fps:24,interpolation:null};
   const camTrack=new CameraTrack(),soundtrack=new Soundtrack();
   let viewOverride=false,importBusy=false,recording=null,skinThumb='',playbackLast=performance.now(),sceneName='Maple clearing';
@@ -138,18 +156,58 @@ async function main(){
     $('#key-pose').title=r?'Apply '+(r.character?'pose':'transform')+' to '+r.name+' at '+timeline.time.toFixed(2)+' s':'Select a player or object';
     $('#keyframe-hint').textContent=draft?'Edit kept while choosing a time. Apply the key, then use From start to preview.':r&&!keysOf(r).length?'First key at a later time? The original starting pose is added at 0 s automatically.':'Choose a time → edit → Apply pose / transform. From start previews the full animation.';
   }
-  function selectedTarget(){if(!selected)return null;const c=selected.character;if(c&&state.scope==='part')return c.joints[state.joint];if(c&&state.scope==='held')return c.mount.children[0]||selected.root;return selected.root;}
-  function targetLabel(){if(!selected)return 'Nothing selected';if(selected.character){if(state.scope==='part')return JOINTS[state.joint];if(state.scope==='held')return selected.character.tool;return 'Whole player';}return selected.name;}
-  function setScope(scope,joint=state.joint){
+  function selectedParts(){const c=selected?.character;if(!c||state.scope!=='part')return[];const list=state.parts.filter(id=>c.joints[id]);return list.length?list:[state.joint];}
+  function selectedTarget(){if(!selected)return null;const c=selected.character;if(c&&state.scope==='part'){const parts=selectedParts();return parts.length>1?partProxy:c.joints[state.joint];}if(c&&state.scope==='held')return c.mount.children[0]||selected.root;return selected.root;}
+  function targetLabel(){if(!selected)return 'Nothing selected';if(selected.character){if(state.scope==='part'){const parts=selectedParts();return parts.length>1?parts.length+' parts':JOINTS[state.joint];}if(state.scope==='held')return selected.character.tool;return 'Whole player';}return selected.name;}
+  function setScope(scope,joint=state.joint,parts=null){
     if(!selected?.character)scope='root';
     if(scope==='held'&&!selected.character.mount.children.length){toast('Equip a tool before selecting the held item.');scope='root';}
     state.scope=scope;state.joint=JOINTS[joint]?joint:'head';$('#joint-select').value=state.joint;
+    state.parts=scope==='part'?(parts?parts.filter(id=>JOINTS[id]):[state.joint]):[];if(scope==='part'&&!state.parts.includes(state.joint))state.parts.unshift(state.joint);
     setMode(state.mode);refreshInspector();
   }
+  // Read the live joint transforms of the selected parts back into the pose.
   function syncTargetToActor(){
     const c=selected?.character;if(!c)return;
-    if(state.scope==='part'){c.pose[state.joint]=['x','y','z'].map(a=>rad(c.joints[state.joint].rotation[a]));c.preset='custom';applyPose(c,c.pose);}
+    if(state.scope==='part'){
+      for(const id of selectedParts()){
+        const j=c.joints[id];c.pose[id]=['x','y','z'].map(a=>rad(j.rotation[a]));
+        const base=c.detached?.[id]||j.userData.rest,moved=base&&j.position.toArray().some((v,i)=>Math.abs(v-base[i]-partMove(c.pose,id)[i])>1e-7),scaled=j.scale.toArray().some(v=>Math.abs(v-1)>1e-7)||c.pose.scale?.[id];
+        if(moved||c.pose.move?.[id]){c.pose.move=c.pose.move||{};c.pose.move[id]=j.position.toArray().map((v,i)=>v-base[i]);}
+        if(scaled){c.pose.scale=c.pose.scale||{};c.pose.scale[id]=j.scale.toArray();}
+      }
+      c.preset='custom';applyPose(c,c.pose);placePartProxy();
+    }
     else if(state.scope==='held')c.heldTransform=heldOf(c);
+  }
+  // Group pivot for several parts: centre of their pivots, oriented like the primary part.
+  function placePartProxy(){
+    const c=selected?.character;if(!c||state.scope!=='part'||selectedParts().length<2||partDrag)return;
+    c.root.updateMatrixWorld(true);const parts=topLevelParts(c,selectedParts()),centre=new THREE.Vector3(),v=new THREE.Vector3();
+    for(const id of parts)centre.add(c.joints[id].getWorldPosition(v));centre.divideScalar(parts.length||1);
+    partProxy.position.copy(centre);c.joints[state.joint].getWorldQuaternion(partProxy.quaternion);partProxy.scale.set(1,1,1);partProxy.updateMatrixWorld(true);
+  }
+  function beginPartDrag(){
+    const c=selected?.character;partDrag=null;if(!c||state.scope!=='part'||gizmo.object!==partProxy)return;
+    c.root.updateMatrixWorld(true);partProxy.updateMatrixWorld(true);
+    partDrag={start:partProxy.matrixWorld.clone(),quat:partProxy.quaternion.clone(),scale:partProxy.scale.clone(),
+      parts:topLevelParts(c,selectedParts()).map(id=>{const j=c.joints[id];return{id,world:j.matrixWorld.clone(),position:j.position.clone(),scale:j.scale.clone(),worldQuat:j.getWorldQuaternion(new THREE.Quaternion())};})};
+  }
+  // Move: the whole group shifts together. Rotate / scale: each part turns or grows
+  // around its own joint pivot, so a multi-part rotation never dislocates the rig.
+  function applyPartDrag(){
+    const c=selected?.character;if(!c||!partDrag||gizmo.object!==partProxy)return;
+    partProxy.updateMatrixWorld(true);const m=new THREE.Matrix4(),pq=new THREE.Quaternion();
+    if(gizmo.mode==='translate'){
+      const delta=partProxy.matrixWorld.clone().multiply(partDrag.start.clone().invert());
+      for(const p of partDrag.parts){const j=c.joints[p.id];j.parent.updateMatrixWorld(true);m.copy(j.parent.matrixWorld).invert().multiply(delta).multiply(p.world);const q=new THREE.Quaternion(),sc=new THREE.Vector3();m.decompose(j.position,q,sc);}
+      return;
+    }
+    const turn=partProxy.quaternion.clone().multiply(partDrag.quat.clone().invert()),grow=partProxy.scale.clone().divide(partDrag.scale);
+    for(const p of partDrag.parts){
+      const j=c.joints[p.id];j.parent.updateMatrixWorld(true);j.parent.getWorldQuaternion(pq);
+      j.quaternion.copy(pq.invert().multiply(turn.clone().multiply(p.worldQuat)));j.position.copy(p.position);j.scale.copy(p.scale).multiply(grow);
+    }
   }
   function equipTool(r,name){
     if(!r?.character)return;const c=r.character,old=c.tool,before=heldOf(c);prepEdit(r);equip(c,name);const after=heldOf(c);
@@ -342,7 +400,7 @@ async function main(){
   function setPlaying(play){
     if(!play)soundtrack.stopPreview();if(play===timeline.playing)return;if(play)applyPendingEdits();
     if(play&&timeline.time>=timeline.duration-.001)timeline.time=0;
-    timeline.playing=play;orbit.enabled=!play;gizmo.enabled=!play;
+    timeline.playing=play;orbit.enabled=!play&&!nav.active;gizmo.enabled=!play;
     if(play){playbackLast=performance.now();viewOverride=false;objects.forEach(r=>{if(r.character)r.character.manual=false;});applyAtTime(timeline.time);}
     else objects.forEach(r=>{if(r.character){r.character.pose=copyPose(r.character.displayPose);r.character.manual=true;}});
     if(!play)applyDistortion(false);
@@ -361,20 +419,22 @@ async function main(){
   const terrainCfg={tool:'raise',biome:'temperate',radius:6,strength:2,falloff:'smooth',depth:3,seed:'studio'};
   function setMode(mode){
     setPlaying(false);
-    if(state.scope==='part'&&['translate','scale'].includes(mode)){mode='rotate';toast('Body parts rotate at fixed joints. Choose Whole player to move or scale.');}
+    if(fillDrag)cancelFill();
     state.mode=mode;$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
-    gizmo.detach();const target=selectedTarget();if(target&&['translate','rotate','scale'].includes(mode)){gizmo.attach(target);gizmo.setMode(mode);gizmo.setSpace(mode==='translate'&&state.scope!=='held'?'world':'local');}
+    gizmo.detach();placePartProxy();const target=selectedTarget();if(target&&['translate','rotate','scale'].includes(mode)){gizmo.attach(target);gizmo.setMode(mode);gizmo.setSpace(mode==='translate'&&state.scope!=='held'?'world':'local');}
     hover.visible=false;const building=mode==='build'||mode==='erase',terrain=mode==='terrain',zoneMode=mode==='zone';$('#build-badge').hidden=!(building||terrain||zoneMode);
     $('#build-badge').textContent=mode==='erase'?'Remove blocks · click any block':terrain?BRUSH_LABELS[terrainCfg.tool]+' brush · drag over terrain':zoneMode?'Cinematic build · drag a box over the world':'Placing '+blockDefs[state.block].label+' · right-click to erase';
-    $('#viewport-hint').innerHTML=(building||terrain||zoneMode)?(mode==='erase'?'Click a block to remove <b>·</b> Ctrl+Z to undo <b>·</b> V to select':terrain?'Left-drag sculpts <b>·</b> Right-drag turns the camera <b>·</b> Each stroke is one undo step':zoneMode?'Left-drag selects a zone <b>·</b> Right-drag turns the camera <b>·</b> V to select':'Click to place <b>·</b> Right-click to erase <b>·</b> V to select'):mode==='rotate'?'Drag a colored ring <b>·</b> XYZ angles in inspector <b>·</b> Key to animate':'Drag to orbit <b>·</b> Click a block, part or item <b>·</b> E to rotate';
+    const filling=building&&state.fill.on;if(filling)$('#build-badge').textContent=(mode==='erase'?'Drag-remove':'Drag-fill '+blockDefs[state.block].label)+' · drag a rectangle · Esc cancels';
+    $('#fill-blocks').classList.toggle('active',state.fill.on);$('#fill-blocks').setAttribute('aria-pressed',String(state.fill.on));$('#fill-panel').hidden=!(filling&&state.category==='blocks');
+    $('#viewport-hint').innerHTML=nav.active?navHint():filling?'Left-drag fills a rectangle <b>·</b> Wheel = layers <b>·</b> Right-drag turns the camera <b>·</b> Click places one block':(building||terrain||zoneMode)?(mode==='erase'?'Click a block to remove <b>·</b> Ctrl+Z to undo <b>·</b> V to select':terrain?'Left-drag sculpts <b>·</b> Right-drag turns the camera <b>·</b> Each stroke is one undo step':zoneMode?'Left-drag selects a zone <b>·</b> Right-drag turns the camera <b>·</b> V to select':'Click to place <b>·</b> Right-click to erase <b>·</b> V to select'):mode==='rotate'?'Drag a colored ring <b>·</b> XYZ angles in inspector <b>·</b> Key to animate':'Drag to orbit <b>·</b> Click a block, part or item <b>·</b> E to rotate';
     $('#place-blocks').classList.toggle('active',mode==='build');$('#erase-blocks').classList.toggle('active',mode==='erase');$('#terrain-toggle').classList.toggle('active',terrain);$('#zone-toggle').classList.toggle('active',zoneMode);
     $('#terrain-panel').hidden=!terrain;$('#zone-panel').hidden=!zoneMode;
     if(zoneMode)zoneRefreshUI();
-    if(terrain||zoneMode){orbit.mouseButtons={LEFT:null,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};orbit.touches={ONE:null,TWO:THREE.TOUCH.DOLLY_PAN};}
+    if(terrain||zoneMode||filling){orbit.mouseButtons={LEFT:null,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};orbit.touches={ONE:null,TWO:THREE.TOUCH.DOLLY_PAN};}
     else{orbit.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN};orbit.touches={ONE:THREE.TOUCH.ROTATE,TWO:THREE.TOUCH.DOLLY_PAN};}
     canvas.style.cursor=(building||terrain||zoneMode)?'crosshair':'default';
   }
-  function selectObject(r,scope='root',joint=state.joint){finishInputEdit();selected=r;if(r?.draft)r.draft.time=timeline.time;state.selectedKey=null;state.scope=r?.character?scope:'root';state.joint=joint;$('#joint-select').value=joint;refreshOutliner();refreshInspector();refreshTimeline();setMode(['build','erase'].includes(state.mode)?'select':state.mode);}
+  function selectObject(r,scope='root',joint=state.joint){finishInputEdit();const changed=r!==selected;selected=r;if(r?.draft)r.draft.time=timeline.time;state.selectedKey=null;if(changed&&state.keySel.type==='pose')state.keySel=emptySelection();state.scope=r?.character?scope:'root';state.joint=joint;state.parts=state.scope==='part'?[joint]:[];$('#joint-select').value=joint;refreshOutliner();refreshInspector();refreshTimeline();setMode(['build','erase'].includes(state.mode)?'select':state.mode);}
   function showInspector(tab){$('.inspector-scroll').scrollTop=0;state.inspector=tab;$$('[data-inspector]').forEach(b=>b.classList.toggle('active',b.dataset.inspector===tab));for(const n of ['object','light','camera'])$('#inspect-'+n).hidden=n!==tab;syncDock();}
   function refreshOutliner(){
     const host=$('#outliner');host.replaceChildren();$('#obj-count').textContent=objects.length+1;
@@ -388,20 +448,20 @@ async function main(){
     }
   }
   function refreshInspector(){
-    const r=selected;$('#object-empty').hidden=!!r;$('#object-controls').hidden=!r;$('#selection-type').textContent=r?(state.scope==='part'?'BODY PART':state.scope==='held'?'HELD ITEM':r.type.toUpperCase()):'NOTHING';
+    refreshPartPanel();const r=selected;$('#object-empty').hidden=!!r;$('#object-controls').hidden=!r;$('#selection-type').textContent=r?(state.scope==='part'?'BODY PART':state.scope==='held'?'HELD ITEM':r.type.toUpperCase()):'NOTHING';
     $('#selected-target').textContent=r?(r.character?r.name+' · '+targetLabel():r.name):'Click a block, tool or player';updateKeyUI();
     if(!r)return;
     if(r.character&&state.scope==='held'&&!r.character.mount.children.length)state.scope='root';
-    const target=selectedTarget(),part=state.scope==='part';
+    const target=selectedTarget(),part=state.scope==='part',multi=part&&selectedParts().length>1;
     $('#object-name').value=r.name;$('#object-kind').textContent=r.character?'Classic skin · recreated rig':r.type==='import'?'Your imported model':r.type==='voxel'?'Converted voxel model':r.type==='mesh'?'Custom mesh · editable parts':r.type==='tool'?(itemDefs[r.options.asset]?.sprite?'Textured inventory sprite':'Original source geometry'):r.type==='block'?'Individual editable block':'Scene prop';
     $('#object-icon').innerHTML=r.character&&skinThumb?`<img src="${skinThumb}" alt="Bob">`:icon(r.type==='lamp'?'sun':'cube');
     $('#target-name').textContent=targetLabel();$('#scope-actions').hidden=!r.character;
     for(const[id,scope]of[['whole-player','root'],['pose-part','part'],['scope-held','held']])$('#'+id).classList.toggle('active',state.scope===scope);
     $('#scope-held').disabled=!r.character?.mount.children.length;$('#select-held-tool').disabled=!r.character?.mount.children.length;
     $('#drop-ground').disabled=state.scope!=='root';$('#delete-object').title=state.scope==='held'?'Remove held item':part?'Choose Whole player to delete the character':'Delete selected object';
-    for(let i=0;i<3;i++){const axis='xyz'[i];$('#obj-'+axis).value=target.position.getComponent(i).toFixed(2);$('#obj-'+axis).disabled=part;$('#rot-'+axis).value=rad(target.rotation[axis]).toFixed(1);}
+    for(let i=0;i<3;i++){const axis='xyz'[i];$('#obj-'+axis).value=target.position.getComponent(i).toFixed(2);$('#obj-'+axis).disabled=multi;$('#rot-'+axis).value=rad(target.rotation[axis]).toFixed(1);$('#rot-'+axis).disabled=multi;}
     $('#rotation-path').value=r.rotationMode||'shortest';$('#rotation-path-note').textContent=r.rotationMode==='spins'?'Full turns are intentional: numeric angle values set the turn count.':'Direct motion between saved poses; drag direction and extra turns are ignored.';
-    $('#obj-scale').value=target.scale.x.toFixed(2);$('#obj-scale').disabled=part;$('#char-controls').hidden=!r.character;$('#model-controls').hidden=!['import','voxel'].includes(r.type);$('#clear-object-track').hidden=!!r.character||!r.keys?.length;
+    $('#obj-scale').value=target.scale.x.toFixed(2);$('#obj-scale').disabled=multi;$('#char-controls').hidden=!r.character;$('#model-controls').hidden=!['import','voxel'].includes(r.type);$('#clear-object-track').hidden=!!r.character||!r.keys?.length;
     const tool=r.type==='tool'?r.options.asset:(r.character&&!part&&r.character.tool!=='none'?r.character.tool:null),texture=tool?toolTextureName(tool):r.type==='block'?blockDefs[resolveBlock(r.options.block)]?.icon:null;
     $('#texture-preview').hidden=!texture||!textureURL(texture);if(texture&&textureURL(texture)){const meta=catalog.textureMeta[texture]||{};$('#texture-image').src=textureURL(texture);$('#texture-image').alt=meta.name||texture;$('#texture-filename').textContent=meta.name||texture+'.png';$('#download-texture').dataset.texture=texture;$('#tool-shading-row').hidden=!tool;$('#tool-shading').checked=light.toolLit;$('#texture-preview p').textContent=meta.kind==='palette-tint'?'Original grayscale art + the game’s equipment color palette.':meta.kind==='model-image'?'Texture extracted from the source model.':tool?'Original PNG colors are preserved by default.':'Source texture / inventory icon; individual block faces can differ.';}
     if(r.character){
@@ -447,7 +507,7 @@ async function main(){
   }
   function refreshLibrary(){
     const token=++libraryToken,isBlocks=state.category==='blocks',isItems=state.category==='tools',isModels=state.category==='models',isTextures=state.category==='textures',isBob=state.category==='characters',isBuilds=state.category==='builds',isFx=state.category==='fx';
-    $$('[data-library]').forEach(b=>b.classList.toggle('active',b.dataset.library===state.category));$('#block-edit-actions').hidden=!isBlocks;if(isBlocks)syncBlockTexUI();$('#tool-edit-actions').hidden=!(isItems||isModels);$('#fx-actions').hidden=!isFx;if(isFx)refreshParticleTexOptions();$('#terrain-panel').hidden=!(isBlocks&&state.mode==='terrain');$('#zone-panel').hidden=!(isBlocks&&state.mode==='zone');
+    $$('[data-library]').forEach(b=>b.classList.toggle('active',b.dataset.library===state.category));$('#block-edit-actions').hidden=!isBlocks;if(isBlocks)syncBlockTexUI();$('#tool-edit-actions').hidden=!(isItems||isModels);$('#fx-actions').hidden=!isFx;if(isFx)refreshParticleTexOptions();$('#terrain-panel').hidden=!(isBlocks&&state.mode==='terrain');$('#zone-panel').hidden=!(isBlocks&&state.mode==='zone');$('#fill-panel').hidden=!(isBlocks&&state.fill.on&&['build','erase'].includes(state.mode));
     $('#asset-action-note').textContent=isBlocks?'Place / Remove to build. Select + Rotate to animate a block.':isItems||isModels?(state.toolAction==='place'?'Place a separate, rotatable asset. A ghost preview follows your cursor — click to set it down, Esc cancels. Models are static source geometry.':'Select a player, then choose an asset to hold. Adjust its grip in Held item.') :isBuilds?'Whole builds from the open map-editor pack. Click one, then click the world — a ghost shows where it lands. Esc cancels.':isTextures?'All PNG files, embedded model images and labeled palette variants. Click to inspect / download.':'The built-in, editable classic Bob recreation.';
     $('#place-tools').classList.toggle('active',state.toolAction==='place');$('#equip-tools').classList.toggle('active',state.toolAction==='equip');
     $('#catalog-summary').textContent=isBuilds?prefabAssets.length.toLocaleString()+' prefab builds · houses, trees, rocks & stands':catalog.counts.liveBlockRoots.toLocaleString()+' base blocks · '+catalog.counts.liveItemEntries.toLocaleString()+' item entries';
@@ -524,21 +584,43 @@ async function main(){
       host.replaceChildren();keys.forEach((k,i)=>{
         if(k.time>timeline.duration+.001)return;
         const b=document.createElement('button');b.className='key-marker'+(type==='pose'?' pose-key':'');b.style.left=(k.time/timeline.duration*100)+'%';b.title=`${type} key at ${k.time.toFixed(2)}s · drag to retime`;b.setAttribute('aria-label',b.title);
-        if(state.selectedKey?.type===type&&state.selectedKey.index===i)b.classList.add('selected-key');
+        const ownerId=type==='camera'?null:selected?.id||null;
+        if(state.selectedKey?.type===type&&state.selectedKey.index===i)b.classList.add('selected-key','primary-key');
+        if(isSelected(state.keySel,type,ownerId,k.time))b.classList.add('selected-key');
+        b.dataset.time=k.time;b.dataset.track=type;
         b.addEventListener('pointerdown',e=>{
-          e.stopPropagation();setPlaying(false);const before=clone(keys),owner=selected;state.selectedKey={type,index:i,owner:owner?.id};seek(k.time,type==='camera');b.classList.add('selected-key');
-          const start=e.clientX,rect=area.getBoundingClientRect();b.setPointerCapture(e.pointerId);
-          const move=ev=>{if(Math.abs(ev.clientX-start)<2)return;k.time=clamp(Math.round((ev.clientX-rect.left)/rect.width*timeline.duration*100)/100,0,timeline.duration);timeline.time=k.time;b.style.left=(k.time/timeline.duration*100)+'%';updateTimeUI();};
+          e.stopPropagation();if(e.button!==0)return;setPlaying(false);const owner=selected;
+          // Ctrl/Cmd toggles and Shift extends; neither ever drags, so modifier clicks cannot move keys by accident.
+          if(e.ctrlKey||e.metaKey||e.shiftKey){
+            state.keySel=e.shiftKey?rangeSelect(state.keySel,type,ownerId,k.time,keys):toggleKey(state.keySel,type,ownerId,k.time);
+            const primary=state.keySel.times.length?keys.findIndex(o=>Math.abs(o.time-(isSelected(state.keySel,type,ownerId,k.time)?k.time:state.keySel.times[0]))<=KEY_EPS):-1;
+            state.selectedKey=primary>=0?{type,index:primary,owner:owner?.id}:null;refreshTimeline();return;
+          }
+          if(!isSelected(state.keySel,type,ownerId,k.time)||state.keySel.times.length<2)state.keySel=selectOnly(type,ownerId,k.time);
+          else state.keySel.anchor=k.time;
+          const group=state.keySel.times.length>1,before=clone(keys),sel={...state.keySel,times:state.keySel.times.slice()};
+          state.selectedKey={type,index:i,owner:owner?.id};seek(k.time,type==='camera');b.classList.add('selected-key');
+          const start=e.clientX,rect=area.getBoundingClientRect(),siblings=group?[...host.querySelectorAll('.key-marker.selected-key')]:[b];b.setPointerCapture(e.pointerId);let dragging=false,delta=0;
+          const move=ev=>{if(!dragging&&Math.abs(ev.clientX-start)<4)return;dragging=true;
+            const raw=Math.round((ev.clientX-rect.left)/rect.width*timeline.duration*100)/100-k.time;delta=round2(clampDelta(sel,raw,timeline.duration));
+            for(const m of siblings){const t=+m.dataset.time+delta;m.style.left=(t/timeline.duration*100)+'%';}
+            timeline.time=clamp(k.time+delta,0,timeline.duration);updateTimeUI();};
           const up=()=>{b.removeEventListener('pointermove',move);b.removeEventListener('pointerup',up);
-            const after=keys.filter(other=>other!==k&&Math.abs(other.time-k.time)>KEY_EPS).map(clone);putKey(after,clone(k));
-            state.selectedKey={type,index:after.findIndex(other=>Math.abs(other.time-k.time)<=KEY_EPS),owner:owner?.id};
-            replaceKeys(type,owner,after);if(JSON.stringify(before)!==JSON.stringify(after))pushHistory('retime key',()=>replaceKeys(type,owner,before),()=>replaceKeys(type,owner,after));
-            if(owner?.draft)owner.draft.time=timeline.time;applyAtTime(timeline.time,true,true);updatePath();refreshTimeline();refreshCameraKeys();};
+            if(!dragging||!delta){if(group&&!dragging)state.keySel=selectOnly(type,ownerId,k.time); // a plain click narrows a group to that key
+              refreshTimeline();return;}
+            const result=moveKeys(before,sel,delta,timeline.duration),after=result.keys,newTime=round2(k.time+result.delta);
+            state.keySel={...sel,times:result.times,anchor:newTime};
+            state.selectedKey={type,index:after.findIndex(other=>Math.abs(other.time-newTime)<=KEY_EPS),owner:owner?.id};
+            replaceKeys(type,owner,after);if(JSON.stringify(before)!==JSON.stringify(after))pushHistory(group?'move '+sel.times.length+' keys':'retime key',()=>{state.keySel=sel;replaceKeys(type,owner,before);},()=>{state.keySel={...sel,times:result.times};replaceKeys(type,owner,after);});
+            timeline.time=clamp(newTime,0,timeline.duration);if(owner?.draft)owner.draft.time=timeline.time;applyAtTime(timeline.time,true,true);updatePath();refreshTimeline();refreshCameraKeys();};
           b.addEventListener('pointermove',move);b.addEventListener('pointerup',up,{once:true});
         });host.append(b);
       });
     }
-    $('#key-pose').disabled=!selected;$('#key-pose').innerHTML=icon('key')+(selected?.character?'Apply pose':'Apply transform');$('#delete-key').disabled=!state.selectedKey;
+    $('#key-pose').disabled=!selected;$('#key-pose').innerHTML=icon('key')+(selected?.character?'Apply pose':'Apply transform');
+    const selKeys=activeSelectionKeys();$('#delete-key').disabled=!state.selectedKey&&!selKeys.length;
+    const info=$('#key-selection-info');info.hidden=selKeys.length<2&&!keyClipboard;
+    info.textContent=(selKeys.length>1?selKeys.length+' '+state.keySel.type+' keys selected · Ctrl+C copy · drag to move together':'')+(keyClipboard&&selKeys.length<2?keyClipboard.keys.length+' '+keyClipboard.type+' key'+(keyClipboard.keys.length===1?'':'s')+' copied · Ctrl+V pastes at the playhead':'');
     const easeSel=$('#key-ease'),sk=state.selectedKey;
     const skKey=sk?(sk.type==='camera'?camTrack.keys[sk.index]:(sk.owner===selected?.id?keysOf(selected)[sk.index]:null)):null;
     easeSel.disabled=!skKey;easeSel.value=skKey?.ease||'';
@@ -782,7 +864,7 @@ async function main(){
     toast('Camera now follows '+r.name+' for the whole clip · Undo restores the old camera track.');
   }
 
-  function freeView(){setPlaying(false);viewOverride=true;orbit.enabled=true;}
+  function freeView(){setPlaying(false);viewOverride=true;orbit.enabled=!nav.active;}
   function focusObject(r){
     if(!r)return;freeView();const box=new THREE.Box3().setFromObject(r.root),center=box.getCenter(new THREE.Vector3()),size=box.getSize(new THREE.Vector3());
     const d=Math.max(3,Math.max(size.x,size.y,size.z)*2.2);camera.position.copy(center).add(new THREE.Vector3(d*.55,d*.35,d));orbit.target.copy(center);camera.fov=45;camera.updateProjectionMatrix();orbit.update();syncFov();
@@ -797,10 +879,13 @@ async function main(){
   orbit.addEventListener('start',()=>{if(!gizmo.dragging)freeView();});
   let gizmoBefore=null;
   gizmo.addEventListener('dragging-changed',e=>{
-    orbit.enabled=!e.value;if(e.value&&selected){finishInputEdit();prepEdit();gizmoBefore=actorSnapshot(selected);orbit.enabled=false;}
-    else if(selected&&gizmoBefore){recordActorChange(selected,gizmoBefore,'transform '+selected.name);gizmoBefore=null;refreshInspector();}
+    orbit.enabled=!e.value&&!nav.active;if(e.value&&selected){finishInputEdit();prepEdit();
+      // Moving or scaling parts uses the optional per-part channels; make them explicit so the edit is tracked.
+      const c=selected.character;if(c&&state.scope==='part'&&gizmo.mode!=='rotate'){ensurePoseExtras(c.pose);applyPose(c,c.pose);}
+      gizmoBefore=actorSnapshot(selected);orbit.enabled=false;beginPartDrag();}
+    else if(selected&&gizmoBefore){partDrag=null;recordActorChange(selected,gizmoBefore,'transform '+selected.name);gizmoBefore=null;placePartProxy();refreshInspector();}
   });
-  gizmo.addEventListener('objectChange',()=>{if(selected){syncTargetToActor();if(gizmoBefore)stageActorEdit(selected,gizmoBefore);refreshInspector();}});
+  gizmo.addEventListener('objectChange',()=>{if(selected){applyPartDrag();syncTargetToActor();if(gizmoBefore)stageActorEdit(selected,gizmoBefore);refreshInspector();}});
 
   // Pointer picking uses the viewport rectangle, never the full window.
   const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();
@@ -1020,10 +1105,14 @@ async function main(){
   canvas.addEventListener('contextmenu',e=>e.preventDefault());
   canvas.addEventListener('pointerdown',e=>{
     pointerDown={x:e.clientX,y:e.clientY,button:e.button,gizmo:!!gizmo.axis};
+    if(['build','erase'].includes(state.mode)&&state.fill.on&&!ghostState&&e.button===0&&!state.pathMode){if(startFill(e)){e.preventDefault();try{canvas.setPointerCapture(e.pointerId);}catch(err){}return;}}
+    if(nav.active&&!ghostState&&!gizmo.axis&&(e.button===0||e.button===2)){nav.look={x:e.clientX,y:e.clientY};try{canvas.setPointerCapture(e.pointerId);}catch(err){}return;}
     if(state.mode==='terrain'&&!ghostState&&e.button===0){terrainStroke=new Map();terrainLast=null;const c=terrainCenter(e);if(c){terrainLast=c.join(',');stampTerrain(c);}}
     if(state.mode==='zone'&&!ghostState&&e.button===0){const a=zoneAnchor(e);if(a){zoneDrag={from:a,to:a};zoneTrimmed=false;zoneApply(a,a);}}
   });
   canvas.addEventListener('pointermove',e=>{
+    if(fillDrag){updateFill(e);return;}
+    if(nav.look){lookBy(e.clientX-nav.look.x,e.clientY-nav.look.y);nav.look={x:e.clientX,y:e.clientY};return;}
     if(ghostState){hover.visible=false;brushRing.visible=false;updateGhost(e);return;}
     if(state.mode==='terrain'){
       hover.visible=false;
@@ -1038,8 +1127,12 @@ async function main(){
     if(hover.visible){const rec=recordForHit(hit);hover.rotation.set(0,0,0);hover.scale.set(1,1,1);if(dig&&rec?.type==='block'){hover.position.copy(rec.root.position);hover.rotation.copy(rec.root.rotation);hover.scale.copy(rec.root.scale);}else{const p=cellFromHit(hit,dig);hover.position.set(p[0]+.5,p[1]+.5,p[2]+.5);}hover.material.color.set(dig?0xf5a179:0xd6f29e);}
   });
   canvas.addEventListener('pointerleave',()=>{hover.visible=false;brushRing.visible=false;zoneDrag=null;if(terrainStroke)endTerrainStroke();});
-  canvas.addEventListener('wheel',e=>{if(!ghostState)return;e.preventDefault();ghostState.yOffset+=(e.deltaY<0?1:-1);applyGhostOffset();},{passive:false});
+  // Capture phase on the viewport: while a fill is being dragged the wheel sets its size instead of zooming.
+  viewport.addEventListener('wheel',e=>{if(!fillDrag||e.target!==canvas)return;e.preventDefault();e.stopPropagation();if(e.shiftKey)state.fill.raise=clamp(state.fill.raise+(e.deltaY<0?1:-1),-32,32);else state.fill.layers=clamp(state.fill.layers+(e.deltaY<0?1:-1),1,32);syncFillUI();updateFill(e);},{capture:true,passive:false});
+  canvas.addEventListener('wheel',e=>{if(nav.active&&!ghostState){e.preventDefault();dollyNav(e.deltaY);return;}if(!ghostState)return;e.preventDefault();ghostState.yOffset+=(e.deltaY<0?1:-1);applyGhostOffset();},{passive:false});
   canvas.addEventListener('pointerup',e=>{
+    if(fillDrag){const down=pointerDown;pointerDown=null;if(finishFill(e,down)!=='click')return;pointerDown=down;}
+    if(nav.look)nav.look=null;
     if(state.mode==='terrain'&&!ghostState){if(terrainStroke)endTerrainStroke();pointerDown=null;return;}
     if(state.mode==='zone'&&!ghostState){const drag=zoneDrag;zoneDrag=null;pointerDown=null;if(drag)zoneApply(drag.from,drag.to);if(zone.plan)toast(planSummary(zone.plan)+' selected. Pick a build order, then Build it.');return;}
     const down=pointerDown;pointerDown=null;if(!down||Math.hypot(down.x-e.clientX,down.y-e.clientY)>5||down.gizmo)return;
@@ -1060,19 +1153,22 @@ async function main(){
   const none=document.createElement('option');none.value='none';none.textContent='Empty hand';$('#held-tool').append(none);
   const itemGroups=new Map();for(const name of toolNames){const group=itemDefs[name]?.group||'Other';if(!itemGroups.has(group)){const g=document.createElement('optgroup');g.label=group;itemGroups.set(group,g);$('#held-tool').append(g);}const o=document.createElement('option');o.value=name;o.textContent=name;itemGroups.get(group).append(o);}
   for(const slot of ARMOR_SLOTS){const sel=$('#armor-'+slot);const no=document.createElement('option');no.value='';no.textContent='None';sel.append(no);for(const[id,set]of Object.entries(ARMOR_SETS)){const o=document.createElement('option');o.value=id;o.textContent=set.label;sel.append(o);}}
-  function bindActorInput(el,apply,label){let before=null,owner=null;el.dataset.actorInput='true';
-    el.addEventListener('focus',()=>{if(selected){owner=selected;before=actorSnapshot(owner);}});
-    el.addEventListener('pointerdown',()=>{if(selected){owner=selected;before=actorSnapshot(owner);}});
-    el.addEventListener('input',()=>{if(!selected)return;if(!before){owner=selected;before=actorSnapshot(owner);}prepEdit();apply(selected,parseFloat(el.value)||0);stageActorEdit(selected,before);});
+  function bindActorInput(el,apply,label,prepare=null){let before=null,owner=null;el.dataset.actorInput='true';
+    const snap=()=>{if(prepare)prepare(selected);before=actorSnapshot(owner);};
+    el.addEventListener('focus',()=>{if(selected){owner=selected;snap();}});
+    el.addEventListener('pointerdown',()=>{if(selected){owner=selected;snap();}});
+    el.addEventListener('input',()=>{if(!selected)return;if(!before){owner=selected;snap();}prepEdit();apply(selected,parseFloat(el.value)||0);stageActorEdit(selected,before);});
     el.addEventListener('change',()=>{if(owner&&before)recordActorChange(owner,before,label);before=null;owner=null;});
   }
+  // Part move/scale edits use the optional per-part pose channels: make them explicit before the snapshot.
+  function partExtrasPrep(r){const c=r?.character;if(c&&state.scope==='part'){c.pose=copyPose(c.displayPose);ensurePoseExtras(c.pose);applyPose(c,c.pose);}}
   for(let i=0;i<3;i++){
     const ax='xyz'[i];
-    bindActorInput($('#obj-'+ax),(r,v)=>{selectedTarget().position.setComponent(i,clamp(v,-100,100));syncTargetToActor();},'move selection');
+    bindActorInput($('#obj-'+ax),(r,v)=>{selectedTarget().position.setComponent(i,clamp(v,-100,100));syncTargetToActor();},'move selection',partExtrasPrep);
     bindActorInput($('#rot-'+ax),(r,v)=>{selectedTarget().rotation[ax]=deg(clamp(v,-36000,36000));syncTargetToActor();refreshJointUI();},'rotate selection');
     bindActorInput($('#joint-'+ax),(r,v)=>{if(!r.character)return;const id=$('#joint-select').value;r.character.pose[id][i]=v;r.character.preset='custom';applyPose(r.character,r.character.pose);if(state.scope!=='part'||state.joint!==id)setScope('part',id);setMode('rotate');$('#joint-'+ax+'-value').textContent=v+'°';$('#rot-'+ax).value=v;},'pose joint');
   }
-  bindActorInput($('#obj-scale'),(r,v)=>{selectedTarget().scale.setScalar(clamp(v,.05,20));syncTargetToActor();},'scale selection');
+  bindActorInput($('#obj-scale'),(r,v)=>{selectedTarget().scale.setScalar(clamp(v,.05,20));syncTargetToActor();},'scale selection',partExtrasPrep);
   bindActorInput($('#body-height'),(r,v)=>{if(r.character){r.character.pose.offset=v;applyPose(r.character,r.character.pose);$('#body-height-value').textContent=v.toFixed(2);}},'body lift');
   $('#joint-select').onchange=e=>{setScope('part',e.target.value);setMode('rotate');};
   $('#whole-player').onclick=()=>{setScope('root');setMode('rotate');};$('#pose-part').onclick=()=>{setScope('part',$('#joint-select').value);setMode('rotate');};
@@ -1213,7 +1309,7 @@ async function main(){
     const transform=t=>t&&vector(t.position)&&vector(t.rotation)&&vector(t.scale)&&t.scale.every(n=>n>0);
     if(!a||typeof a.name!=='string'||!a.name.trim()||a.name.length>80||typeof a.description!=='string'||a.description.length>240||!Number.isFinite(a.duration)||a.duration<=0||a.duration>60||!Array.isArray(a.keys)||a.keys.length<2||a.keys.length>1000)return false;
     if(Math.abs(a.keys[0]?.time)>1e-6||Math.abs(a.keys.at(-1)?.time-a.duration)>1e-6)return false;
-    return a.keys.every((k,i)=>k&&Number.isFinite(k.time)&&k.time>=0&&k.time<=a.duration&&(!i||k.time>a.keys[i-1].time)&&transform(k)&&(!k.held||transform(k.held))&&k.pose&&typeof k.pose==='object'&&!Array.isArray(k.pose)&&Number.isFinite(k.pose.offset)&&Object.keys(JOINTS).every(j=>vector(k.pose[j]))&&Object.keys(k.pose).every(j=>j==='offset'||j in JOINTS));
+    return a.keys.every((k,i)=>k&&Number.isFinite(k.time)&&k.time>=0&&k.time<=a.duration&&(!i||k.time>a.keys[i-1].time)&&transform(k)&&(!k.held||transform(k.held))&&k.pose&&typeof k.pose==='object'&&!Array.isArray(k.pose)&&Number.isFinite(k.pose.offset)&&Object.keys(JOINTS).every(j=>vector(k.pose[j]))&&Object.keys(k.pose).every(j=>j==='offset'||j in JOINTS||((j==='move'||j==='scale')&&k.pose[j]&&typeof k.pose[j]==='object'&&Object.entries(k.pose[j]).every(([id,v])=>id in JOINTS&&vector(v)))));
   }
   try{const raw=localStorage.getItem(customStorage)||'[]';if(raw.length<2000000){const saved=JSON.parse(raw);if(Array.isArray(saved))customAnimations=saved.filter(validCustom).slice(0,50);}}catch(e){}
   function customUI(){const el=$('#custom-animation-list');el.replaceChildren(new Option('Custom animations',''));customAnimations.forEach((a,i)=>el.add(new Option(a.name,String(i))));}
@@ -1346,9 +1442,10 @@ async function main(){
   $('#key-time').onchange=e=>seek(clamp(+e.target.value||0,0,timeline.duration));$('#key-time').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();e.target.blur();}};
   $('#loop').onchange=e=>timeline.loop=e.target.checked;
   $('#duration').onchange=e=>{const old=timeline.duration,next=clamp(+e.target.value||8,2,60);timeline.duration=next;timeline.time=Math.min(timeline.time,next);refreshTimeline();updatePath();toast('Duration '+next+'s. Keys beyond the end remain saved.');pushHistory('clip duration',()=>{timeline.duration=old;updatePath();},()=>{timeline.duration=next;updatePath();});};
-  $('#delete-key').onclick=()=>{const k=state.selectedKey;if(k)deleteKey(k.type,k.index);};
+  $('#delete-key').onclick=()=>{if(activeSelectionKeys().length>1){deleteSelectedKeys();return;}const k=state.selectedKey;if(k)deleteKey(k.type,k.index);};
   $('#auto-key').onclick=()=>{state.autoKey=!state.autoKey;$('#auto-key').classList.toggle('active',state.autoKey);toast(state.autoKey?'Auto-key ON — every edit drops a key at the playhead automatically.':'Auto-key off — edits stay drafts until Apply.');};
   $('#key-ease').onchange=e=>{
+    if(activeSelectionKeys().length>1){setSelectionEase(e.target.value||undefined);return;}
     const sel=state.selectedKey;if(!sel)return;
     const cam=sel.type==='camera',r=cam?null:(sel.owner===selected?.id?selected:null);
     if(!cam&&!r)return;
@@ -1371,7 +1468,9 @@ async function main(){
     refreshTimeline();refreshInspector();refreshCameraKeys();
   };
   $('#track-area').onpointerdown=e=>{
-    if(e.target.closest('.key-marker'))return;state.selectedKey=null;const area=e.currentTarget;area.setPointerCapture(e.pointerId);
+    if(e.target.closest('.key-marker'))return;const area=e.currentTarget;
+    if(e.shiftKey&&e.button===0){startKeyBox(e,area);return;}
+    state.selectedKey=null;state.keySel=emptySelection();area.setPointerCapture(e.pointerId);
     const move=ev=>{const r=area.getBoundingClientRect();seek(clamp((ev.clientX-r.left)/r.width,0,1)*timeline.duration);};move(e);
     const up=()=>{area.removeEventListener('pointermove',move);area.removeEventListener('pointerup',up);refreshTimeline();};area.addEventListener('pointermove',move);area.addEventListener('pointerup',up,{once:true});
   };
@@ -1606,7 +1705,7 @@ async function main(){
   function captureAIScene(){
     return{serial,sceneName,world:{blocks:[...world.map],size:world.size,seed:world.seed},objects:objects.map(r=>{
       const d={id:r.id,type:r.type,name:r.name,transform:transformOf(r.root),options:clone(r.options||{}),rotationMode:r.rotationMode||'shortest',keys:clone(r.keys||[]),draft:r.draft?clone(r.draft):null,animPlaying:!!r.animPlaying,mixerTime:r.mixer?.time||0};
-      if(r.character){const c=r.character;d.character={pose:copyPose(c.displayPose),keys:clone(c.keys),tool:c.tool,held:heldOf(c),preset:c.preset,live:c.live,manual:c.manual,speed:c.speed,markers:c.markers.visible};}return d;
+      if(r.character){const c=r.character;d.character={pose:copyPose(c.displayPose),keys:clone(c.keys),tool:c.tool,held:heldOf(c),preset:c.preset,live:c.live,manual:c.manual,speed:c.speed,markers:c.markers.visible,detached:clone(c.detached||{})};}return d;
     }),light:clone(light),camera:{keys:clone(camTrack.keys),smooth:camTrack.smooth,view:{position:camera.position.toArray(),target:orbit.target.toArray(),fov:camera.fov}},timeline:{...timeline,playing:false},selection:{id:selected?.id||null,scope:state.scope,joint:state.joint},mode:state.mode};
   }
   // Custom meshes are plain three.js groups built from primitive parts. The plan
@@ -1673,7 +1772,7 @@ async function main(){
       if(r.options.material)applyObjectMaterial(r.root,r.options.material);
       if(r.character&&r.options.skin){const tint={default:0xffffff,ember:0xff9a5a,frost:0x7fd4ff,moss:0x8fd17a}[r.options.skin];if(tint!==undefined)r.character.material.color.setHex(tint);}
       if(r.options.attach)attached.add(r.id);
-      if(r.character){const c=r.character,a=d.character;c.keys=clone(a.keys);c.pose=copyPose(a.pose);c.preset=a.preset;c.live=!!a.live;c.manual=a.manual!==false;c.speed=a.speed||1;c.markers.visible=!!a.markers;if(c.tool!==a.tool||!c.mount.children.length&&a.tool!=='none')equip(c,a.tool);setHeld(c,a.held);applyPose(c,c.pose);}
+      if(r.character){const c=r.character,a=d.character;if(a.detached&&typeof a.detached==='object')for(const id of Object.keys(JOINTS))setDetached(c,id,Array.isArray(a.detached[id])?a.detached[id]:null);c.keys=clone(a.keys);c.pose=copyPose(a.pose);c.preset=a.preset;c.live=!!a.live;c.manual=a.manual!==false;c.speed=a.speed||1;c.markers.visible=!!a.markers;if(c.tool!==a.tool||!c.mount.children.length&&a.tool!=='none')equip(c,a.tool);setHeld(c,a.held);applyPose(c,c.pose);}
       objects.push(r);if(!attached.has(r.id))objectGroup.add(r.root);
     }
     // Attachments are resolved after every object exists, so a child may attach
@@ -1706,7 +1805,7 @@ async function main(){
   // Self-contained project files. AI credentials are never part of this data.
   function serializeRecord(r){
     const data={name:r.name,type:r.type,transform:transformOf(r.root),options:r.options||{},rotationMode:r.rotationMode||'shortest'};if(r.draft)data.draft=clone(r.draft);
-    if(r.character){const c=r.character;data.character={pose:copyPose(c.displayPose),keys:clone(c.keys),tool:c.tool,held:heldOf(c),preset:c.preset,live:c.live,skin:c.skinData||null,armor:c.armor||null};}
+    if(r.character){const c=r.character;data.character={pose:copyPose(c.displayPose),keys:clone(c.keys),tool:c.tool,held:heldOf(c),preset:c.preset,live:c.live,skin:c.skinData||null,armor:c.armor||null};if(Object.keys(c.detached||{}).length)data.character.detached=clone(c.detached);}
     else if(r.type==='import'||r.type==='voxel'||r.type==='image'||r.type==='mesh')data.object=r.root.toJSON();
     if(!r.character)data.keys=clone(r.keys||[]);return data;
   }
@@ -1719,6 +1818,8 @@ async function main(){
     if(data.type==='character'){
       const cdata=data.character||{},c=createCharacter(String(data.name).slice(0,60));
       if(cdata.skin){if(!String(cdata.skin).startsWith('data:image/'))throw new Error('Only embedded skin images are supported.');c.material.map=pixelTexture(await new THREE.TextureLoader().loadAsync(cdata.skin));c.skinData=cdata.skin;}
+      // Detached parts (v4.1, optional): validated pivots only; older projects have none.
+      if(cdata.detached&&typeof cdata.detached==='object')for(const[id,b]of Object.entries(cdata.detached))if(JOINTS[id]&&vec(b))setDetached(c,id,b);
       c.pose=copyPose(cdata.pose||neutralPose());c.keys=clone(cdata.keys||[]);c.preset=cdata.preset||'idle';c.live=!!cdata.live;applyPose(c,c.pose);equip(c,toolNames.includes(cdata.tool)?cdata.tool:'none');setHeld(c,cdata.held);wearArmor(c,cdata.armor);r=register(c.root,'character',String(data.name).slice(0,60),{character:c,options:clone(data.options||{})});
     }else if(data.type==='import'||data.type==='voxel'||data.type==='image'||data.type==='mesh'){
       for(const image of data.object?.images||[]){const urls=Array.isArray(image.url)?image.url:[image.url];if(urls.some(u=>typeof u==='string'&&!u.startsWith('data:')))throw new Error('Projects must embed their textures, not link to external files.');}
@@ -2074,28 +2175,387 @@ async function main(){
   $$('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}}));
   function toggleClean(){state.clean=!state.clean;document.body.classList.toggle('clean',state.clean);helpers.visible=!state.clean;for(const r of objects){const m=r.character?.markers;if(!m)continue;if(state.clean){m.userData.previousVisible=m.visible;m.visible=false;}else m.visible=!!m.userData.previousVisible;}resize();}
   $('#clean-view').onclick=toggleClean;$('#clean-return').onclick=toggleClean;
+  // ═══════════════ Keyframe multi-selection, clipboard and Space keying ═══════════════
+  function trackFor(type){if(type==='camera')return{keys:camTrack.keys,owner:null};return selected?{keys:keysOf(selected),owner:selected}:null;}
+  function activeSelectionKeys(){
+    const sel=state.keySel;if(!sel?.type||!sel.times.length)return[];
+    if(sel.type==='pose'&&sel.owner!==(selected?.id||null))return[];
+    const t=trackFor(sel.type);return t?selectedKeys(sel,t.keys):[];
+  }
+  // The primary (last clicked) key also counts as a one-key selection.
+  function ensureKeySel(){
+    if(activeSelectionKeys().length)return true;const k=state.selectedKey;if(!k)return false;
+    const t=trackFor(k.type),key=t?.keys[k.index];if(!key||(k.type==='pose'&&k.owner!==selected?.id))return false;
+    state.keySel=selectOnly(k.type,k.type==='camera'?null:selected.id,key.time);return true;
+  }
+  function commitTrack(type,owner,before,after,label,selBefore,selAfter){
+    const apply=(keys,sel)=>{state.keySel=clone(sel);const t=trackFor(type),k=sel.times[0];replaceKeys(type,owner,keys);state.selectedKey=k===undefined?null:{type,index:(type==='camera'?camTrack.keys:keysOf(owner)).findIndex(o=>Math.abs(o.time-k)<=KEY_EPS),owner:owner?.id};applyAtTime(timeline.time,true,true);updatePath();refreshTimeline();refreshCameraKeys();};
+    apply(after,selAfter);
+    pushHistory(label,()=>apply(before,selBefore),()=>apply(after,selAfter));
+  }
+  function copySelectedKeys(){
+    if(!ensureKeySel())return false;const sel=state.keySel,t=trackFor(sel.type);
+    keyClipboard=copyKeys(sel,t.keys,{character:!!t.owner?.character,source:t.owner?.name||'Camera'});
+    refreshTimeline();toast('Copied '+keyClipboard.keys.length+' '+sel.type+' key'+(keyClipboard.keys.length===1?'':'s')+'. Move the playhead and press Ctrl+V to paste.');return true;
+  }
+  function pasteKeyClip(clip,at,label){
+    if(clip.type==='pose'){
+      const r=selected;if(!r){toast('Select the player or object to paste the keys onto.');return false;}
+      if(!!r.character!==!!clip.character){toast(clip.character?'These are character pose keys. Select a character to paste them.':'These are object transform keys. Select a block, item or model to paste them.');return false;}
+    }
+    finishInputEdit();setPlaying(false);const t=trackFor(clip.type),before=clone(t.keys),start=round2(clamp(at,0,60));
+    if(start+clip.span>timeline.duration+KEY_EPS)extendTimeline(start+clip.span);
+    const result=pasteKeys(before,clip,start,{maxTime:timeline.duration});
+    if(!result.times.length){toast('No keys fit inside the 60-second limit.');return false;}
+    const selBefore=clone(state.keySel),selAfter={type:clip.type,owner:clip.type==='camera'?null:t.owner.id,times:result.times,anchor:result.times[0]};
+    commitTrack(clip.type,t.owner,before,result.keys,label+' '+result.times.length+' keys',selBefore,selAfter);
+    toast((label==='paste'?'Pasted ':'Duplicated ')+result.times.length+' key'+(result.times.length===1?'':'s')+' at '+start.toFixed(2)+' s'+(result.dropped?' · '+result.dropped+' beyond 60 s skipped':'')+' · Undo available.');return true;
+  }
+  function pasteClipboardKeys(at=timeline.time){if(!keyClipboard){toast('Nothing copied yet. Select keys and press Ctrl+C.');return false;}return pasteKeyClip(keyClipboard,at,'paste');}
+  function duplicateSelectedKeys(){
+    if(!ensureKeySel())return false;const sel=state.keySel,t=trackFor(sel.type),clip=copyKeys(sel,t.keys,{character:!!t.owner?.character});
+    return pasteKeyClip(clip,duplicateStart(sel,timeline.time,Math.max(1/(timeline.fps||24),.1)),'duplicate');
+  }
+  function deleteSelectedKeys(){
+    if(!ensureKeySel())return false;const sel=state.keySel,t=trackFor(sel.type),before=clone(t.keys),after=deleteKeys(before,sel),n=before.length-after.length;
+    commitTrack(sel.type,t.owner,before,after,'delete '+n+' keys',clone(sel),emptySelection());state.selectedKey=null;refreshTimeline();toast('Deleted '+n+' key'+(n===1?'':'s')+'. Undo restores them.');return true;
+  }
+  function selectAllKeysInTrack(){
+    const type=state.keySel.type||(state.selectedKey?.type)||(state.inspector==='camera'||!selected?'camera':'pose'),t=trackFor(type);
+    if(!t||!t.keys.length){toast('No keys in this track yet.');return false;}
+    state.keySel=selectAllKeys(type,type==='camera'?null:t.owner.id,t.keys);state.selectedKey={type,index:0,owner:t.owner?.id};refreshTimeline();
+    toast('Selected all '+t.keys.length+' '+type+' keys.');return true;
+  }
+  function clearKeySelection(){const had=activeSelectionKeys().length||state.selectedKey;state.keySel=emptySelection();state.selectedKey=null;refreshTimeline();return!!had;}
+  function setSelectionEase(ease){
+    if(!ensureKeySel())return;const sel=state.keySel,t=trackFor(sel.type),before=clone(t.keys),after=clone(t.keys);
+    for(const k of selectedKeys(sel,after)){if(ease)k.ease=ease;else delete k.ease;}
+    commitTrack(sel.type,t.owner,before,after,'ease '+sel.times.length+' keys',clone(sel),clone(sel));
+  }
+  // Shift+drag on the track area draws a time box; Ctrl/Cmd adds to the current selection.
+  function startKeyBox(e,area){
+    const lanes=[['camera',$('#cam-track')],['pose',$('#pose-track')]],hitLane=lanes.find(([,el])=>{const r=el.getBoundingClientRect();return e.clientY>=r.top-4&&e.clientY<=r.bottom+4;})||lanes[selected?1:0];
+    const [type,lane]=hitLane,t=trackFor(type);if(!t){toast('Select an object to box-select its keys.');return;}
+    const rect=area.getBoundingClientRect(),laneRect=lane.getBoundingClientRect(),box=document.createElement('div');box.className='key-box';area.append(box);area.setPointerCapture(e.pointerId);
+    const x0=e.clientX,additive=e.ctrlKey||e.metaKey;
+    const draw=x=>{const a=clamp(Math.min(x0,x),rect.left,rect.right),b=clamp(Math.max(x0,x),rect.left,rect.right);Object.assign(box.style,{left:(a-rect.left)+'px',width:(b-a)+'px',top:(laneRect.top-rect.top-3)+'px',height:(laneRect.height+6)+'px'});};draw(x0);
+    const move=ev=>draw(ev.clientX);
+    const up=ev=>{area.removeEventListener('pointermove',move);area.removeEventListener('pointerup',up);box.remove();
+      const toTime=x=>clamp((x-rect.left)/rect.width,0,1)*timeline.duration;
+      if(Math.abs(ev.clientX-x0)<3){if(!additive)clearKeySelection();return;}
+      state.keySel=rectSelect(state.keySel,type,type==='camera'?null:t.owner.id,t.keys,toTime(x0),toTime(ev.clientX),additive);
+      const first=state.keySel.times[0];state.selectedKey=first===undefined?null:{type,index:t.keys.findIndex(k=>Math.abs(k.time-first)<=KEY_EPS),owner:t.owner?.id};refreshTimeline();
+      if(state.keySel.times.length)toast(state.keySel.times.length+' '+type+' key'+(state.keySel.times.length===1?'':'s')+' selected.');};
+    area.addEventListener('pointermove',move);area.addEventListener('pointerup',up);
+  }
+  const keyNum=v=>JSON.stringify(v,(k,x)=>typeof x==='number'?Math.round(x*1e5)/1e5:x);
+  function sameKeyData(a,b){const strip=k=>{const{time,ease,...rest}=k;return rest;};return keyNum(strip(a))===keyNum(strip(b));}
+  function flashKey(time){requestAnimationFrame(()=>{for(const m of $$('#pose-track .key-marker'))if(Math.abs(+m.dataset.time-time)<=KEY_EPS){m.classList.remove('key-flash');void m.offsetWidth;m.classList.add('key-flash');}});}
+  // Space (configurable): key the selected character, parts or object at the playhead.
+  function keyframeSelection(){
+    const r=selected;if(!r){toast('Select a character, body part or object to key it.');return;}
+    if(recording)return;setPlaying(false);finishInputEdit();
+    const t=timeline.time,existing=keysOf(r).find(k=>Math.abs(k.time-t)<=KEY_EPS);
+    if(existing&&!r.draft&&sameKeyData(existing,keyFromState(poseState(r),t,!!r.character))){toast('Key at '+t.toFixed(2)+' s is already up to date. Nothing was duplicated.');state.keySel=selectOnly('pose',r.id,existing.time);refreshTimeline();flashKey(existing.time);return;}
+    const n0=keysOf(r).length;addPoseKey();const made=keysOf(r).find(k=>Math.abs(k.time-t)<=KEY_EPS);if(!made)return;state.keySel=selectOnly('pose',r.id,made.time);refreshTimeline();flashKey(made.time);
+    const what=r.character?(state.scope==='part'?selectedParts().map(id=>JOINTS[id]).join(', '):state.scope==='held'?'held item':'pose'):'transform';
+    toast((existing?'Updated ':'Added ')+(r.character?'key ('+what+')':'transform key')+' for '+r.name+' at '+t.toFixed(2)+' s · Undo available.');
+  }
+
+  // ═══════════════ Navigation (fly) mode: WASD + mouse look on the existing camera ═══════════════
+  function navHint(){const L=id=>shortcuts.label(id);return 'Fly: '+[L('nav.forward'),L('nav.left'),L('nav.back'),L('nav.right')].join(' ')+' <b>·</b> Up '+L('nav.up')+' <b>·</b> Down '+L('nav.down')+' <b>·</b> Faster '+L('nav.fast')+' <b>·</b> Drag to look <b>·</b> '+L('nav.toggle')+' / Esc exits';}
+  function lookAngles(){return anglesFromDirection(orbit.target.clone().sub(camera.position).toArray());}
+  function lookDistance(){return clamp(camera.position.distanceTo(orbit.target),2,60);}
+  function setLook(yaw,pitch,dist=lookDistance()){orbit.target.copy(camera.position).add(new THREE.Vector3(...directionFromAngles(yaw,pitch)).multiplyScalar(dist));camera.lookAt(orbit.target);}
+  function lookBy(dx,dy){if(timeline.playing||recording)return;viewOverride=true;const a=lookAngles(),n=applyLook(a.yaw,a.pitch,dx,nav.invert?-dy:dy,FLY_DEFAULTS.sensitivity*nav.sensitivity);setLook(n.yaw,n.pitch);}
+  function dollyNav(deltaY){if(timeline.playing||recording)return;viewOverride=true;const a=lookAngles(),step=-Math.sign(deltaY)*Math.min(4,Math.abs(deltaY)*.01)*nav.speed/6,d=new THREE.Vector3(...directionFromAngles(a.yaw,a.pitch)).multiplyScalar(step);camera.position.add(d);orbit.target.add(d);camera.lookAt(orbit.target);}
+  function releaseNavKeys(){nav.held.clear();nav.keys?.clear();nav.look=null;}
+  function setNavMode(on){
+    on=!!on;if(on===nav.active)return;if(on&&recording)return;
+    nav.active=on;releaseNavKeys();nav.velocity=[0,0,0];nav.keys=new Map();
+    if(on){setPlaying(false);viewOverride=true;if(['terrain','zone'].includes(state.mode))setMode('select');orbit.enabled=false;const a=lookAngles();setLook(a.yaw,a.pitch);}
+    else orbit.enabled=!timeline.playing;
+    $('#nav-mode').classList.toggle('active',on);$('#nav-mode').setAttribute('aria-pressed',String(on));document.body.classList.toggle('nav-mode',on);
+    setMode(state.mode);toast(on?'Navigation mode: '+navHint().replace(/<b>·<\/b>/g,'·'):'Navigation mode off. Drag orbits again.');
+  }
+  function updateNav(dt){
+    if(!nav.active||timeline.playing||recording)return;
+    const a=lookAngles();nav.velocity=smoothVelocity(nav.velocity,moveVector(nav.held,a.yaw,a.pitch,{speed:nav.speed}),dt);
+    if(nav.velocity.every(v=>v===0))return;viewOverride=true;
+    const d=new THREE.Vector3(...nav.velocity).multiplyScalar(dt);camera.position.add(d);orbit.target.add(d);
+    camera.position.clampScalar(-1500,1500);camera.lookAt(orbit.target);
+  }
+  // OrbitControls keeps the camera above its target by default. Camera keys and fly mode
+  // may look upward, so the limit relaxes to the current view and ratchets back while orbiting.
+  const ORBIT_MAX_POLAR=orbit.maxPolarAngle;let orbitDragging=false;
+  orbit.addEventListener('start',()=>{orbitDragging=true;});orbit.addEventListener('end',()=>{orbitDragging=false;});
+  function relaxPolar(){
+    const off=camera.position.clone().sub(orbit.target),polar=Math.acos(clamp(off.y/(off.length()||1),-1,1));
+    orbit.maxPolarAngle=orbitDragging?Math.max(ORBIT_MAX_POLAR,Math.min(orbit.maxPolarAngle,polar+1e-6)):Math.max(ORBIT_MAX_POLAR,Math.min(Math.PI-.01,polar+1e-6));
+  }
+  $('#nav-mode').onclick=()=>setNavMode(!nav.active);
+  addEventListener('blur',releaseNavKeys);document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseNavKeys();});
+  document.addEventListener('focusin',e=>{if(isTypingTarget(e.target))releaseNavKeys();});
+  addEventListener('keyup',e=>{if(!nav.keys)return;nav.keys.delete(keyName(e));nav.held=new Set([...nav.keys.values()].flat());});
+
+  // ═══════════════ Floating body-part diagram ═══════════════
+  let partPanelRig=null;
+  function buildPartDiagram(adapter){
+    const svg=$('#part-diagram');svg.setAttribute('viewBox',adapter.view.join(' '));svg.replaceChildren();const NS='http://www.w3.org/2000/svg';
+    for(const p of adapter.parts){
+      const g=document.createElementNS(NS,'g');g.setAttribute('class','part-node');g.dataset.part=p.id;g.setAttribute('role','button');g.setAttribute('tabindex','0');g.setAttribute('aria-label',p.label);
+      const r=document.createElementNS(NS,'rect');const[x,y,w,h]=p.rect;r.setAttribute('x',x);r.setAttribute('y',y);r.setAttribute('width',w);r.setAttribute('height',h);r.setAttribute('rx',1.5);
+      const t=document.createElementNS(NS,'text');t.setAttribute('x',x+w/2);t.setAttribute('y',y+h/2+1.6);t.textContent=p.short;
+      const title=document.createElementNS(NS,'title');title.textContent=p.label;g.append(r,t,title);svg.append(g);
+    }
+    partPanelRig=adapter.id;
+  }
+  function refreshPartPanel(){
+    const panel=$('#part-panel'),c=selected?.character,wasHidden=panel.hidden;panel.hidden=!c;if(!c)return;if(wasHidden)requestAnimationFrame(fitPartPanel);
+    const adapter=rigAdapter(c);if(partPanelRig!==adapter.id)buildPartDiagram(adapter);
+    $('#part-panel-name').textContent=selected.name;const parts=state.scope==='part'?selectedParts():[];
+    for(const g of $$('#part-diagram .part-node')){const id=g.dataset.part;g.classList.toggle('selected',parts.includes(id));g.classList.toggle('primary',parts.length>1&&id===state.joint);g.classList.toggle('detached',!!c.detached?.[id]);g.setAttribute('aria-pressed',String(parts.includes(id)));}
+    const allDetached=parts.length&&parts.every(id=>c.detached?.[id]);
+    $('#parts-detach').textContent=allDetached?'Reattach':'Detach';$('#parts-detach').disabled=!parts.length;$('#parts-reset').disabled=!parts.length;$('#parts-none').disabled=!parts.length;
+    $('#part-panel-status').textContent=parts.length?(parts.length===1?JOINTS[parts[0]]:parts.length+' parts')+' selected'+(Object.keys(c.detached||{}).length?' · '+Object.keys(c.detached).length+' detached':'')+' · W / E / R move, rotate, scale':'Whole player · click a part · Ctrl/Shift+click adds';
+  }
+  function pickPart(id,additive=false){
+    const r=selected;if(!r?.character||!r.character.joints[id])return;
+    let parts=state.scope==='part'?selectedParts().slice():[];
+    if(additive){parts=parts.includes(id)?parts.filter(p=>p!==id):[...parts,id];if(!parts.length){setScope('root');return;}}
+    else parts=[id];
+    setScope('part',parts.includes(id)?id:parts[0],parts);if(state.mode==='select')setMode('rotate');showInspector('object');
+  }
+  function selectAllParts(){const r=selected;if(!r?.character){toast('Select a character first.');return;}const ids=rigAdapter(r.character).parts.map(p=>p.id);setScope('part',state.scope==='part'?state.joint:ids[0],ids);if(state.mode==='select')setMode('rotate');}
+  $('#part-diagram').addEventListener('click',e=>{const g=e.target.closest('[data-part]');if(g)pickPart(g.dataset.part,e.ctrlKey||e.metaKey||e.shiftKey);});
+  $('#part-diagram').addEventListener('keydown',e=>{const g=e.target.closest('[data-part]');if(g&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();pickPart(g.dataset.part,e.ctrlKey||e.metaKey||e.shiftKey);}});
+  $('#parts-all').onclick=selectAllParts;$('#parts-none').onclick=()=>{if(selected?.character)setScope('root');};
+  $('#parts-detach').onclick=()=>toggleDetachSelected();
+  $('#parts-reset').onclick=()=>{
+    const r=selected,c=r?.character;if(!c||state.scope!=='part')return;finishInputEdit();prepEdit();ensurePoseExtras(c.pose);applyPose(c,c.pose);const before=actorSnapshot(r);
+    for(const id of selectedParts()){c.pose.move[id]=[0,0,0];c.pose.scale[id]=[1,1,1];}applyPose(c,c.pose);recordActorChange(r,before,'reset part move/scale');setMode(state.mode);refreshInspector();
+  };
+  $('#part-panel-collapse').onclick=()=>{const p=$('#part-panel'),c=p.classList.toggle('collapsed');$('#part-panel-collapse').textContent=c?'+':'–';$('#part-panel-collapse').setAttribute('aria-expanded',String(!c));try{localStorage.setItem('studioPartPanel',JSON.stringify({...partPanelPos(),collapsed:c}));}catch(e){}};
+  // Visible viewport area: on desktop the library/inspector float over the canvas.
+  function openViewRect(){
+    const vp=viewport.getBoundingClientRect();let left=vp.left,right=vp.right;
+    for(const sel of ['.library','.inspector']){const el=$(sel);if(!el||getComputedStyle(el).display==='none'||getComputedStyle(el).visibility==='hidden')continue;const r=el.getBoundingClientRect();if(r.width<2||r.bottom<vp.top+80||r.top>vp.bottom-80)continue;if(r.left<=vp.left+4&&r.right>left&&r.right<vp.left+vp.width/2)left=r.right;if(r.right>=vp.right-4&&r.left<right&&r.left>vp.left+vp.width/2)right=r.left;}
+    return{vp,left,right};
+  }
+  function fitPartPanel(){
+    const panel=$('#part-panel');if(panel.hidden)return;const {vp,left,right}=openViewRect(),w=panel.offsetWidth,h=panel.offsetHeight;
+    const user=panel.dataset.placed==='1';let x=user?parseFloat(panel.style.left):right-vp.left-w-14,y=user?parseFloat(panel.style.top):110;
+    x=clamp(x,left-vp.left+6,Math.max(left-vp.left+6,right-vp.left-w-6));y=clamp(y,6,Math.max(6,vp.height-Math.min(h,60)-6));
+    panel.style.left=x+'px';panel.style.top=y+'px';panel.style.right='auto';
+  }
+  addEventListener('resize',()=>requestAnimationFrame(fitPartPanel));
+  for(const sel of ['.library','.inspector'])$(sel)?.addEventListener('transitionend',e=>{if(e.target===e.currentTarget)fitPartPanel();});
+  new MutationObserver(()=>requestAnimationFrame(fitPartPanel)).observe(document.body,{attributes:true,attributeFilter:['class']});
+  function partPanelPos(){const p=$('#part-panel');return p.dataset.placed==='1'?{left:p.style.left||'',top:p.style.top||''}:{};}
+  {
+    const panel=$('#part-panel'),head=panel.querySelector('.part-panel-head');
+    try{const saved=JSON.parse(localStorage.getItem('studioPartPanel')||'null');if(saved){if(saved.left&&saved.top){panel.style.left=saved.left;panel.style.top=saved.top;panel.style.right='auto';panel.dataset.placed='1';}if(saved.collapsed){panel.classList.add('collapsed');$('#part-panel-collapse').textContent='+';}}}catch(e){}
+    head.addEventListener('pointerdown',e=>{
+      if(e.target.closest('button'))return;e.preventDefault();const {vp,left,right}=openViewRect(),start=panel.getBoundingClientRect(),dx=e.clientX-start.left,dy=e.clientY-start.top;head.setPointerCapture(e.pointerId);
+      const move=ev=>{const x=clamp(ev.clientX-vp.left-dx,left-vp.left,Math.max(left-vp.left,right-vp.left-start.width)),y=clamp(ev.clientY-vp.top-dy,0,vp.height-40);panel.style.left=x+'px';panel.style.top=y+'px';panel.style.right='auto';panel.dataset.placed='1';};
+      const up=()=>{head.removeEventListener('pointermove',move);try{localStorage.setItem('studioPartPanel',JSON.stringify({...partPanelPos(),collapsed:panel.classList.contains('collapsed')}));}catch(err){}};
+      head.addEventListener('pointermove',move);head.addEventListener('pointerup',up,{once:true});
+    });
+  }
+  // Wireframe outlines on the selected parts in the viewport.
+  const partBoxes=[];
+  function updatePartHighlights(){
+    const c=selected?.character,ids=c&&state.scope==='part'&&!timeline.playing&&!state.clean?selectedParts():[];
+    while(partBoxes.length<ids.length){const b=new THREE.BoxHelper(new THREE.Object3D(),0x9fe3ff);b.material.transparent=true;b.material.opacity=.75;b.material.depthTest=false;b.renderOrder=999;partHighlights.add(b);partBoxes.push(b);}
+    partBoxes.forEach((b,i)=>{const id=ids[i],mesh=id&&c.joints[id].children.find(o=>o.userData.part===id);b.visible=!!mesh;if(mesh)b.setFromObject(mesh);});
+  }
+  // Detach / reattach: the joint is re-parented (never rebuilt) and every key of that
+  // part is re-expressed in the new parent space, so the animation keeps its look.
+  function jointDepth(c,id){let d=0;for(let p=c.joints[id].userData.restParent;p&&p!==c.root;p=p.userData?.restParent||p.parent)d++;return d;}
+  function detachSnapshot(r){const c=r.character;return{keys:clone(c.keys),pose:copyPose(c.pose),display:copyPose(c.displayPose),detached:clone(c.detached||{})};}
+  function restoreDetachSnapshot(r,snap){const c=r.character;for(const id of Object.keys(JOINTS))setDetached(c,id,snap.detached[id]||null);c.keys=clone(snap.keys);c.pose=copyPose(snap.pose);applyPose(c,snap.display);if(selected===r){setMode(state.mode);refreshInspector();}refreshTimeline();}
+  function setPartsDetached(r,ids,flag){
+    const c=r?.character;if(!c)return false;if(r.draft){toast('Apply or revert the pending edit first, then detach or reattach.');return false;}
+    setPlaying(false);const before=detachSnapshot(r),changed=[];
+    const order=ids.filter(id=>c.joints[id]&&!!c.detached?.[id]!==flag).sort((a,b)=>flag?jointDepth(c,a)-jointDepth(c,b):jointDepth(c,b)-jointDepth(c,a));
+    for(const id of order){
+      const j=c.joints[id],parent=j.userData.restParent,current=copyPose(c.displayPose);
+      const base=flag?new THREE.Vector3().setFromMatrixPosition(jointRootMatrix(c,id,current)).toArray().map(v=>+v.toFixed(5)):j.userData.rest;
+      const convert=p=>{const M=jointRootMatrix(c,id,p),P=new THREE.Matrix4();if(!flag)P.copy(c.root.matrixWorld).invert().multiply(parent.matrixWorld);return rebasePose(p,id,M,P,base);};
+      const keys=c.keys.map(k=>({...k,pose:convert(k.pose)})),pose=convert(c.pose),display=convert(current);
+      setDetached(c,id,flag?base:null);c.keys=keys;c.pose=pose;applyPose(c,display);changed.push(id);
+    }
+    if(!changed.length){toast(flag?'Those parts are already detached.':'Those parts are already attached.');return false;}
+    const after=detachSnapshot(r);pushHistory((flag?'detach ':'reattach ')+changed.length+' part'+(changed.length===1?'':'s'),()=>restoreDetachSnapshot(r,before),()=>restoreDetachSnapshot(r,after));
+    if(selected===r){setMode(state.mode);refreshInspector();}refreshTimeline();
+    toast((flag?'Detached ':'Reattached ')+changed.map(id=>JOINTS[id]).join(', ')+(flag?'. It no longer follows its parent joint; move, rotate, scale and key it freely.':'. It follows its parent joint again.')+' Undo available.');return true;
+  }
+  function toggleDetachSelected(){
+    const r=selected,c=r?.character;if(!c||state.scope!=='part'){toast('Select one or more body parts first (Parts panel).');return;}
+    const ids=selectedParts();setPartsDetached(r,ids,!ids.every(id=>c.detached?.[id]));
+  }
+
+  // ═══════════════ Drag-to-fill block placement ═══════════════
+  function fillNormal(hit){if(hit.object===floor||!hit.face)return[0,1,0];return hit.face.normal.clone().applyMatrix3(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld)).normalize().toArray();}
+  function startFill(e){
+    const dig=state.mode==='erase',hit=sceneHit(e);if(!hit||!editableHit(hit,dig))return false;
+    if(recordForHit(hit)?.type==='block')return false; // individual editable blocks keep their single-click behaviour
+    const anchor=cellFromHit(hit,dig);let plane=resolvePlane(state.fill.plane,fillNormal(hit));if(dig)plane={axis:plane.axis,sign:-plane.sign};
+    fillDrag={anchor,plane,dig,end:anchor.slice(),box:null,through:hit.point.getComponent(plane.axis)};hover.visible=false;updateFill(e);return true;
+  }
+  function updateFill(e){
+    if(!fillDrag)return;aim(e);const {anchor,plane}=fillDrag,n=new THREE.Vector3();n.setComponent(plane.axis,1);
+    // The drag plane passes through the clicked point, so a click without movement maps back to the anchor cell.
+    const point=ray.ray.intersectPlane(new THREE.Plane(n,-fillDrag.through),new THREE.Vector3());
+    if(point){const end=[Math.floor(point.x),Math.floor(point.y),Math.floor(point.z)].map((v,i)=>clamp(v,anchor[i]-200,anchor[i]+200));end[plane.axis]=anchor[plane.axis];fillDrag.end=end;}
+    const box=fillBox(anchor,fillDrag.end,plane,{layers:state.fill.layers,raise:state.fill.raise});fillDrag.box=box;
+    fillPreview.scale.set(box.size[0]+.04,box.size[1]+.04,box.size[2]+.04);fillPreview.position.set(box.min[0]+box.size[0]/2,box.min[1]+box.size[1]/2,box.min[2]+box.size[2]/2);
+    const color=fillDrag.dig?0xf5a179:box.trimmed?0xffd36b:0xd6f29e;fillPreview.material.color.setHex(color);fillPreview.children[0].material.color.setHex(color);fillPreview.visible=true;
+    const label=$('#fill-label'),vp=viewport.getBoundingClientRect();label.hidden=false;label.textContent=(fillDrag.dig?'Remove · ':'')+describeBox(box);label.classList.toggle('warn',box.trimmed);
+    label.style.left=clamp(e.clientX-vp.left+16,4,vp.width-220)+'px';label.style.top=clamp(e.clientY-vp.top-40,4,vp.height-40)+'px'; // above the cursor, clear of the dock
+  }
+  function cancelFill(silent=false){const had=!!fillDrag;fillDrag=null;fillPreview.visible=false;$('#fill-label').hidden=true;if(had&&!silent)toast('Fill canceled. Nothing was changed.');return had;}
+  function finishFill(e,down){
+    const drag=fillDrag;if(!drag)return null;updateFill(e);const box=drag.box;cancelFill(true);
+    const moved=down&&Math.hypot(down.x-e.clientX,down.y-e.clientY)>5;
+    if(!moved)return'click'; // a plain click keeps single-block placement
+    commitFill(box,drag.dig);return'done';
+  }
+  function commitFill(box,dig=false){
+    if(box.min.some(n=>n<-260)||box.max.some(n=>n>260)){toast('Fills must stay within 260 blocks of the scene centre so the project can be saved and reopened.');return 0;}
+    const next=dig?null:state.block,occupied=new Set(objects.filter(r=>r.type==='block').map(r=>[0,1,2].map(i=>Math.floor(r.root.position.getComponent(i))).join(','))),changes=[];
+    for(const c of boxCells(box)){if(!dig&&occupied.has(c.join(',')))continue;const old=world.get(...c)||null;if(old===next||(dig&&!old))continue;changes.push([c,old]);}
+    if(!changes.length){toast(dig?'No blocks to remove in that area.':'That area is already filled with '+blockDefs[next].label+'.');return 0;}
+    for(const [c] of changes)world.set(...c,next);world.rebuild();
+    pushHistory((dig?'remove ':'fill ')+changes.length+' blocks',()=>{for(const [c,old] of changes)world.set(...c,old);world.rebuild();},()=>{for(const [c] of changes)world.set(...c,next);world.rebuild();});
+    toast((dig?'Removed ':'Placed ')+changes.length.toLocaleString('en-US')+' '+(dig?'':blockDefs[next].label+' ')+'block'+(changes.length===1?'':'s')+' · '+box.size.join(' × ')+(box.trimmed?' · trimmed to the '+FILL_MAX_BLOCKS.toLocaleString('en-US')+'-block limit':'')+' · one Undo step');
+    return changes.length;
+  }
+  function syncFillUI(){$('#fill-plane').value=state.fill.plane;$('#fill-layers').value=state.fill.layers;$('#fill-raise').value=state.fill.raise;}
+  function toggleFill(on=!state.fill.on){
+    state.fill.on=!!on;if(state.fill.on&&!['build','erase'].includes(state.mode)){state.category='blocks';setMode('build');refreshLibrary();}else setMode(state.mode);
+    toast(state.fill.on?'Drag-fill on: drag a rectangle over a face. Click still places one block.':'Drag-fill off. Click places single blocks.');
+  }
+  $('#fill-blocks').onclick=()=>{setPlaying(false);touchClosePanels();toggleFill();};
+  $('#fill-plane').onchange=e=>{state.fill.plane=e.target.value;};
+  $('#fill-layers').onchange=e=>{state.fill.layers=clamp(Math.round(+e.target.value)||1,1,32);syncFillUI();};
+  $('#fill-raise').onchange=e=>{state.fill.raise=clamp(Math.round(+e.target.value)||0,-32,32);syncFillUI();};
+
+  // ═══════════════ Shortcut manager wiring ═══════════════
+  function activeContexts(){return[ghostState?'placing':null,nav.active?'navigation':null,'editor','global'].filter(Boolean);}
+  function cancelChain(){
+    if(fillDrag){cancelFill();pointerDown=null;return true;}
+    if(ghostState){cancelGhost();toast('Placement canceled.');return true;}
+    if(state.pathMode){setPathMode(false);toast('Walk path canceled.');return true;}
+    if(state.chainMode){setChainMode(false);toast('Chain cleared.');return true;}
+    if(nav.active){setNavMode(false);return true;}
+    if(activeSelectionKeys().length>1){clearKeySelection();toast('Key selection cleared.');return true;}
+    if(document.body.classList.contains('panel-library')||document.body.classList.contains('panel-inspector')||document.body.classList.contains('panel-timeline')){closePanels();return true;}
+    setMode('select');return true;
+  }
+  const ACTIONS={
+    'nav.toggle':()=>setNavMode(!nav.active),
+    'camera.focus':()=>focusObject(selected),'camera.key':()=>addCameraKey(),'view.clean':()=>toggleClean(),
+    'anim.key':()=>keyframeSelection(),'anim.play':()=>setPlaying(!timeline.playing),'anim.start':()=>seek(0),'anim.end':()=>seek(timeline.duration),
+    'edit.undo':()=>undo(),'edit.redo':()=>redo(),'edit.save':()=>$('#save-project').click(),
+    'edit.copy':()=>copySelectedKeys(),'edit.paste':()=>keyClipboard?pasteClipboardKeys():false,
+    'edit.duplicate':()=>{if(ensureKeySel()&&activeSelectionKeys().length)duplicateSelectedKeys();else duplicateSelected();},
+    'edit.selectAll':()=>selectAllKeysInTrack(),
+    'edit.delete':()=>{if(activeSelectionKeys().length>1)deleteSelectedKeys();else if(state.selectedKey)deleteKey(state.selectedKey.type,state.selectedKey.index);else deleteObject();},
+    'edit.cancel':()=>cancelChain(),
+    'edit.confirm':()=>{if(state.pathMode){bakePath();return true;}if(state.chainMode&&state.chainQueue.length){bakeSequence();return true;}return false;},
+    'edit.search':()=>{document.body.classList.add('panel-library');syncDock();$('#asset-search').focus();},
+    'tool.select':()=>setMode('select'),'tool.move':()=>setMode('translate'),'tool.rotate':()=>setMode('rotate'),'tool.scale':()=>setMode('scale'),
+    'tool.build':()=>{state.category='blocks';setMode('build');refreshLibrary();},'tool.erase':()=>{state.category='blocks';setMode('erase');refreshLibrary();},
+    'tool.fill':()=>toggleFill(),
+    'tool.terrain':()=>{state.category='blocks';setMode(state.mode==='terrain'?'build':'terrain');refreshLibrary();},
+    'tool.zone':()=>{state.category='blocks';setMode(state.mode==='zone'?'build':'zone');refreshLibrary();},
+    'parts.all':()=>selectAllParts(),'parts.detach':()=>toggleDetachSelected(),
+    'place.rotate':()=>rotateGhost(),
+  };
+  // Actions that never call preventDefault when they decline (so native copy/paste keeps working).
+  const SOFT_ACTIONS=new Set(['edit.copy','edit.paste','edit.confirm']);
+  function shortcutBlocked(){return isTypingTarget(document.activeElement)||$$('dialog').some(d=>d.open);}
   addEventListener('keydown',e=>{
-    if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName)||document.activeElement.isContentEditable)return;
-    if($$('dialog').some(d=>d.open))return;
-    const k=e.key.toLowerCase();
-    if(k==='escape'&&ghostState){cancelGhost();toast('Placement canceled.');return;}
-    if(k==='r'&&ghostState){e.preventDefault();rotateGhost();return;}
-    if(k==='escape'&&state.pathMode){setPathMode(false);toast('Walk path canceled.');return;}
-    if(k==='escape'&&state.chainMode){setChainMode(false);toast('Chain cleared.');return;}
-    if(k==='enter'&&state.pathMode){e.preventDefault();bakePath();return;}
-    if(k==='enter'&&state.chainMode&&state.chainQueue.length){e.preventDefault();bakeSequence();return;}
-    if((e.ctrlKey||e.metaKey)&&k==='z'){e.preventDefault();e.shiftKey?redo():undo();return;}
-    if((e.ctrlKey||e.metaKey)&&k==='d'){e.preventDefault();duplicateSelected();return;}
-    if((e.ctrlKey||e.metaKey)&&k==='s'){e.preventDefault();$('#save-project').click();return;}
-    if(e.code==='Space'){e.preventDefault();setPlaying(!timeline.playing);}
-    if(k==='h')toggleClean();if(k==='f')focusObject(selected);if(k==='/'){e.preventDefault();document.body.classList.add('panel-library');syncDock();$('#asset-search').focus();}
-    if(k==='b'){state.category='blocks';setMode('build');refreshLibrary();}if(k==='x'){state.category='blocks';setMode('erase');refreshLibrary();}
-    if(k==='t'){state.category='blocks';setMode(state.mode==='terrain'?'build':'terrain');refreshLibrary();}
-    if(k==='z'){state.category='blocks';setMode(state.mode==='zone'?'build':'zone');refreshLibrary();}
-    if(k==='escape'&&(document.body.classList.contains('panel-library')||document.body.classList.contains('panel-inspector')||document.body.classList.contains('panel-timeline'))){closePanels();return;}
-    if(k==='v'||k==='escape')setMode('select');if(k==='w')setMode('translate');if(k==='e')setMode('rotate');if(k==='r')setMode('scale');
-    if(k==='delete'||k==='backspace'){e.preventDefault();if(state.selectedKey)deleteKey(state.selectedKey.type,state.selectedKey.index);else deleteObject();}
+    if(e.isComposing||shortcutBlocked())return;
+    // A focused toolbar button would also "click" on Space keyup; the shortcut owns Space instead.
+    if(keyName(e)==='Space'&&document.activeElement?.tagName==='BUTTON'&&(nav.active||shortcuts.match(e,activeContexts())))document.activeElement.blur();
+    if(nav.active&&!timeline.playing){
+      // Ctrl/Alt chords (Ctrl+Z, Ctrl+S …) stay shortcuts unless a fly key itself is bound to that modifier.
+      const k=keyName(e),chord=(e.ctrlKey||e.metaKey||e.altKey)&&!isModifierName(k)&&!['Ctrl','Alt'].some(m=>shortcuts.holdActionsFor({key:m==='Ctrl'?'Control':'Alt'},'navigation').length);
+      const holds=chord?[]:shortcuts.holdActionsFor(e,'navigation');
+      if(holds.length){e.preventDefault();if(!e.repeat){nav.keys.set(k,holds);nav.held=new Set([...nav.keys.values()].flat());}return;}
+    }
+    const id=shortcuts.match(e,activeContexts());if(!id||!ACTIONS[id])return;
+    if(e.repeat&&!['edit.undo','edit.redo','anim.start','anim.end'].includes(id)){e.preventDefault();return;}
+    const handled=ACTIONS[id]();
+    if(handled===false&&SOFT_ACTIONS.has(id))return;
+    e.preventDefault();
   });
+  function refreshShortcutHints(){
+    const set=(el,id)=>{if(!el)return;const base=(el.dataset.baseTitle??=el.title.replace(/\s*\([^()]*\)\s*$/,''));const b=shortcuts.get(id)[0];el.title=b?base+' ('+comboLabel(b)+')':base;};
+    for(const [mode,id] of [['select','tool.select'],['translate','tool.move'],['rotate','tool.rotate'],['scale','tool.scale']])set($(`[data-mode="${mode}"]`),id);
+    set($('#undo'),'edit.undo');set($('#redo'),'edit.redo');set($('#focus'),'camera.focus');set($('#clean-view'),'view.clean');set($('#play'),'anim.play');set($('#nav-mode'),'nav.toggle');
+    set($('#place-blocks'),'tool.build');set($('#erase-blocks'),'tool.erase');set($('#fill-blocks'),'tool.fill');set($('#key-camera'),'camera.key');set($('#parts-all'),'parts.all');
+    const space=shortcuts.get('anim.key').includes('Space')?'Space adds a key':shortcuts.get('anim.play').includes('Space')?'Space plays':'';
+    $('#timeline-shortcut-hint').innerHTML='Drag keys to retime <b>·</b> Ctrl/Shift+click multi-select <b>·</b> Shift+drag box-select'+(space?' <b>·</b> '+space:'');
+    if(nav.active)$('#viewport-hint').innerHTML=navHint();
+  }
+  // Settings dialog: change / remove / add bindings with conflict detection.
+  let recordingShortcut=null,pendingConflict=null;
+  function shortcutStatus(text,error=false){const el=$('#shortcut-status');el.textContent=text;el.classList.toggle('error',error);}
+  function renderShortcutList(){
+    const host=$('#shortcut-list');host.replaceChildren();const groups=[...new Set(SHORTCUT_ACTIONS.map(a=>a.group))];
+    for(const group of groups){
+      const section=document.createElement('section');section.className='shortcut-group';const h=document.createElement('h3');h.textContent=group;section.append(h);
+      for(const a of SHORTCUT_ACTIONS.filter(x=>x.group===group)){
+        const row=document.createElement('div');row.className='shortcut-row'+(recordingShortcut?.id===a.id?' recording':'');row.dataset.action=a.id;
+        const label=document.createElement('span');label.className='shortcut-label';label.textContent=a.label;const ctx=document.createElement('small');ctx.textContent=CONTEXT_LABELS[a.context]+(a.hold?' · hold':'');label.append(ctx);
+        const keys=document.createElement('span');keys.className='shortcut-keys';
+        for(const combo of shortcuts.get(a.id)){
+          const chip=document.createElement('span');chip.className='shortcut-chip';
+          const change=document.createElement('button');change.className='chip-key';change.textContent=recordingShortcut?.id===a.id&&recordingShortcut.previous===combo?'Press keys…':comboLabel(combo);change.title='Change '+comboLabel(combo);change.onclick=()=>startShortcutRecord(a.id,combo);
+          const remove=document.createElement('button');remove.className='chip-remove';remove.textContent='×';remove.title='Remove '+comboLabel(combo);remove.setAttribute('aria-label','Remove '+comboLabel(combo)+' from '+a.label);remove.onclick=()=>{shortcuts.unbind(a.id,combo);shortcutStatus('Removed '+comboLabel(combo)+' from “'+a.label+'”.');};
+          chip.append(change,remove);keys.append(chip);
+        }
+        if(!shortcuts.get(a.id).length&&!(recordingShortcut?.id===a.id)){const none=document.createElement('i');none.className='shortcut-none';none.textContent='Unassigned';keys.append(none);}
+        const add=document.createElement('button');add.className='chip-add';add.textContent=recordingShortcut?.id===a.id&&!recordingShortcut.previous?'Press keys…':'+';add.title='Add a shortcut for '+a.label;add.onclick=()=>startShortcutRecord(a.id,null);keys.append(add);
+        const reset=document.createElement('button');reset.className='chip-reset';reset.textContent='↺';reset.title='Restore the default for '+a.label;reset.onclick=()=>{shortcuts.resetAction(a.id);shortcutStatus('“'+a.label+'” restored to its default.');};
+        row.append(label,keys,reset);section.append(row);
+      }
+      host.append(section);
+    }
+    const space=shortcuts.get('anim.key').includes('Space')?'anim.key':shortcuts.get('anim.play').includes('Space')?'anim.play':'';$('#space-action').value=space;
+  }
+  function startShortcutRecord(id,previous){pendingConflict=null;$('#shortcut-conflict').hidden=true;recordingShortcut={id,previous};const a=shortcuts.byId.get(id);shortcutStatus('Press the new shortcut for “'+a.label+'”'+(a.hold?' (single key; modifiers are allowed on their own)':'')+'. Esc cancels.');renderShortcutList();$(`#shortcut-list .shortcut-row[data-action="${id}"]`)?.querySelector('.chip-add')?.focus();}
+  function tryBind(id,combo,previous,replace=false){
+    const result=shortcuts.bind(id,combo,{replace,previous});const a=shortcuts.byId.get(id);
+    if(result.ok){recordingShortcut=null;pendingConflict=null;$('#shortcut-conflict').hidden=true;shortcutStatus(comboLabel(combo)+' now runs “'+a.label+'”'+(result.conflicts.length?' (removed from '+result.conflicts.map(c=>'“'+c.label+'”').join(', ')+')':'')+'.'+(a.hold&&combo==='Ctrl'?' Note: browsers close the tab on Ctrl+W, so avoid flying forward while holding Ctrl.':''));renderShortcutList();return;}
+    if(result.error){shortcutStatus(result.error,true);return;}
+    pendingConflict={id,combo,previous};$('#shortcut-conflict-text').textContent=comboLabel(combo)+' is already used by '+result.conflicts.map(c=>'“'+c.label+'” ('+CONTEXT_LABELS[c.context]+')').join(', ')+'. Replace it?';$('#shortcut-conflict').hidden=false;$('#shortcut-replace').focus();
+  }
+  $('#shortcut-replace').onclick=()=>{const p=pendingConflict;if(p)tryBind(p.id,p.combo,p.previous,true);};
+  $('#shortcut-cancel').onclick=()=>{pendingConflict=null;recordingShortcut=null;$('#shortcut-conflict').hidden=true;shortcutStatus('Change canceled. Nothing was modified.');renderShortcutList();};
+  document.addEventListener('keydown',e=>{
+    if(!recordingShortcut||!$('#shortcuts-dialog').open)return;e.preventDefault();e.stopPropagation();
+    const a=shortcuts.byId.get(recordingShortcut.id),key=keyName(e);
+    if(key==='Escape'&&!e.ctrlKey&&!e.altKey&&!e.shiftKey){recordingShortcut=null;shortcutStatus('Recording canceled.');renderShortcutList();return;}
+    if(isModifierName(key)&&!a.hold)return; // wait for the main key
+    tryBind(a.id,a.hold?key:comboFromEvent(e),recordingShortcut.previous);
+  },true);
+  $('#shortcuts-dialog').addEventListener('cancel',e=>{if(recordingShortcut||pendingConflict){e.preventDefault();recordingShortcut=null;pendingConflict=null;$('#shortcut-conflict').hidden=true;shortcutStatus('Recording canceled.');renderShortcutList();}});
+  $('#shortcuts-dialog').addEventListener('close',()=>{recordingShortcut=null;pendingConflict=null;$('#shortcut-conflict').hidden=true;});
+  $('#space-action').onchange=e=>{const choice=e.target.value;shortcuts.unbind('anim.key','Space');shortcuts.unbind('anim.play','Space');if(choice){const r=shortcuts.bind(choice,'Space',{replace:true});shortcutStatus('Space now runs “'+shortcuts.byId.get(choice).label+'”'+(r.conflicts.length?' (removed from '+r.conflicts.map(c=>'“'+c.label+'”').join(', ')+')':'')+'.');}else shortcutStatus('Space does nothing while editing (it still flies up in navigation mode).');};
+  function saveFly(){try{localStorage.setItem('studioFlyV1',JSON.stringify({speed:nav.speed,sensitivity:nav.sensitivity,invert:nav.invert}));}catch(e){}}
+  function syncFlyUI(){$('#fly-speed').value=nav.speed;$('#fly-speed-value').textContent=nav.speed;$('#fly-sensitivity').value=nav.sensitivity;$('#fly-sensitivity-value').textContent=nav.sensitivity.toFixed(1)+'×';$('#fly-invert').checked=nav.invert;}
+  $('#fly-speed').oninput=e=>{nav.speed=clamp(+e.target.value||6,1,30);syncFlyUI();saveFly();};
+  $('#fly-sensitivity').oninput=e=>{nav.sensitivity=clamp(+e.target.value||1,.5,3);syncFlyUI();saveFly();};
+  $('#fly-invert').onchange=e=>{nav.invert=e.target.checked;saveFly();};
+  $('#shortcuts-reset').onclick=()=>{shortcuts.resetAll();shortcutStatus('All shortcuts restored to their defaults.');};
+  function openShortcuts(){$('#project-menu').hidden=true;recordingShortcut=null;shortcutStatus('');syncFlyUI();renderShortcutList();$('#shortcuts-dialog').showModal();}
+  $('#open-shortcuts').onclick=openShortcuts;$('#help-shortcuts').onclick=()=>{$('#help-dialog').close();openShortcuts();};
+  shortcuts.onChange(()=>{refreshShortcutHints();if($('#shortcuts-dialog').open)renderShortcutList();});
+  refreshShortcutHints();syncFillUI();
 
   function resize(){
     const width=viewport.clientWidth,height=viewport.clientHeight;if(!width||!height)return;
@@ -2108,7 +2568,7 @@ async function main(){
   updateLight();syncLightUI();syncAudioUI();selectObject(bob);showInspector('object');refreshAll();syncFov();historyUI();
   const clock=new THREE.Clock();let timeSinceStart=0,waterClock=0;
   function animate(){
-    requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.25),aiOpen=$('#ai-dialog').open;frames++;if(recording||(!timeline.playing&&($('#code-dialog').open||$('#prompt-dialog').open)))return;timeSinceStart+=dt;waterClock=timeline.playing?timeline.time:waterClock+dt;setWaterTime(waterClock);if(!timeline.playing)updateAssetAnimations(timeSinceStart);
+    requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.25);frames++;if(recording||(!timeline.playing&&($('#code-dialog').open||$('#prompt-dialog').open)))return;timeSinceStart+=dt;waterClock=timeline.playing?timeline.time:waterClock+dt;setWaterTime(waterClock);if(!timeline.playing)updateAssetAnimations(timeSinceStart);
     if(timeline.playing){
       const now=performance.now();timeline.time+=Math.max(0,(now-playbackLast)/1000);playbackLast=now;
       if(timeline.time>=timeline.duration){
@@ -2117,12 +2577,13 @@ async function main(){
       }
       applyAtTime(timeline.time);updateTimeUI();
     }else{
-      for(const r of objects){const c=r.character;if(c&&c.live&&!aiOpen)applyPose(c,presetPose(c.preset,timeSinceStart*c.speed,true));}
+      for(const r of objects){const c=r.character;if(c&&c.live)applyPose(c,presetPose(c.preset,timeSinceStart*c.speed,true));}
       for(const r of objects)if(r.emitter)r.emitter.update(timeSinceStart);
-      if(orbit.enabled&&!gizmo.dragging&&!aiOpen)orbit.update();
+      {const now=performance.now();updateNav(Math.min(.5,(now-(nav.last||now))/1000));nav.last=now;}relaxPolar();
+      if(orbit.enabled&&!gizmo.dragging&&!nav.active)orbit.update();
     }
-    for(const r of objects){if(r.mixer&&r.animPlaying&&!aiOpen)r.mixer.update(dt);if(r.character?.markers.visible)applyPose(r.character,r.character.displayPose);}
-    updateOnion();
+    for(const r of objects){if(r.mixer&&r.animPlaying)r.mixer.update(dt);if(r.character?.markers.visible)applyPose(r.character,r.character.displayPose);}
+    updateOnion();updatePartHighlights();
     if(selected){
       ring.visible=!!selected.character;ring.position.set(selected.root.position.x,world.heightAt(selected.root.position.x,selected.root.position.z)+.013,selected.root.position.z);ring.scale.setScalar(selected.root.scale.x);
       selectionBox.visible=!selected.character&&!timeline.playing;if(selectionBox.visible)selectionBox.setFromObject(selected.root);
@@ -2183,16 +2644,17 @@ async function main(){
     select:selectObject,setMode,setScope,selectedTarget,selectTerrainBlock,addProp,sceneHit,soundtrack,seek,setPlaying,updateLight,addPoseKey,addCameraKey,projectData,loadProject,parseModel,voxelise,equip,applyPose,neutralPose,presetPose,
     serializeRecord,handleFiles,undo,redo,frameScene,focusObject,refreshAll,editBlock,cellFromHit,history,cleanRender,actorSnapshot,restoreActor,makeTool,toolTextureName,setToolLighting,applyObjectKey,applyPendingEdits,revertEdit,keysOf,poseState,
     zone:{get from(){return zone.from;},get to(){return zone.to;},get cells(){return zone.cells;},get plan(){return zone.plan;},get config(){return zoneCfg;},select:zoneSelect,clear:zoneClear,refresh:zoneRefreshUI},
-    cinematicBuild,MAX_ZONE_BLOCKS};
+    cinematicBuild,MAX_ZONE_BLOCKS,
+    shortcuts,keyframeSelection,rigAdapter,
+    nav:{get active(){return nav.active;},set:setNavMode,lookBy,dolly:dollyNav,update:updateNav,release:releaseNavKeys,angles:lookAngles,state:nav,get maxPolar(){return orbit.maxPolarAngle;}},
+    keys:{get selection(){return state.keySel;},set selection(v){state.keySel=v;refreshTimeline();},get clipboard(){return keyClipboard;},active:activeSelectionKeys,copy:copySelectedKeys,paste:pasteClipboardKeys,duplicate:duplicateSelectedKeys,remove:deleteSelectedKeys,selectAll:selectAllKeysInTrack,clear:clearKeySelection,ease:setSelectionEase},
+    parts:{pick:pickPart,all:selectAllParts,get selected(){return selectedParts();},detach:setPartsDetached,toggleDetach:toggleDetachSelected,proxy:partProxy},
+    fill:{state:state.fill,toggle:toggleFill,commit:commitFill,box:fillBox,resolvePlane,cancel:cancelFill,get drag(){return fillDrag;},preview:fillPreview}};
   const codeBridge={catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS),textures:Object.keys(assetData.textures||{}).slice(0,1200)},snapshot:captureAIScene,apply:applyAIPlan,prepare:()=>{if(recording){toast('Stop recording first.');return false;}finishInputEdit();setPlaying(false);return true;}};
   window.STUDIO.code=initCodeStudio(codeBridge);
   const prompts=initPromptBuilder(codeBridge.catalog);
   initTours({prompts,code:window.STUDIO.code,syncDock,resize});
-  window.STUDIO.ai=initCommandPanel({
-    catalog:{blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS),textures:Object.keys(assetData.textures||{}).slice(0,1200)},
-    snapshot:captureAIScene,apply:applyAIPlan,canUndo:entry=>history.at(-1)===entry,undo,
-    prepare:()=>{if(recording){toast('Stop the recording before opening command plans.');return false;}finishInputEdit();setPlaying(false);return true;},
-    play:()=>{applyPendingEdits();seek(0,true);setPlaying(true);}
-  });
+  // Plan compiler shared with the Code Editor (no separate UI): exposed for catalog regression checks.
+  window.STUDIO.ai={compile:(plan,mode='edit')=>compilePlan(plan,captureAIScene(),codeBridge.catalog,mode),context:()=>makeSceneContext(captureAIScene(),codeBridge.catalog)};
 }
 main().catch(e=>{console.error(e);$('#load-message').textContent='Could not start the 3D editor: '+e.message+'. Please try a WebGL-capable browser.';});

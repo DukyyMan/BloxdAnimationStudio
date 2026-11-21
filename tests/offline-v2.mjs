@@ -31,11 +31,9 @@ try{
   // The normal export is frame-based: verify clip timing, allowing codec padding.
   check('WebM export contains decodable moving-picture and audio tracks',video.width>500&&video.height>300&&Number.isFinite(video.duration)&&Math.abs(video.duration-8)<.05&&Math.abs(video.audioDuration-8)<.05&&video.rms>.003,JSON.stringify(video));
  }
- await page.locator('#open-ai').click();check('standalone command panel has no API key input',await page.locator('#ai-key').count()===0);await page.locator('#ai-example').click();
- check('standalone validates the local command example without networking',(await page.locator('#ai-status').textContent()).includes('Validated'));
- if(await page.locator('#ai-ack-row').isVisible())await page.locator('#ai-ack').check();await page.locator('#ai-play-after').uncheck();await page.locator('#ai-apply').click();await page.waitForFunction(()=>!document.querySelector('#ai-dialog').open);
- check('standalone command execution creates real editable animation',await page.evaluate(()=>STUDIO.objects.length===11&&STUDIO.timeline.duration===10&&STUDIO.objects.find(r=>r.name==='Bob the explorer').character.keys.length>70));await page.locator('#undo').click();
- check('standalone Undo restores the entire pre-command scene',await page.evaluate(()=>STUDIO.objects.length===9&&STUDIO.world.count===956&&STUDIO.timeline.duration===8));
+ // v4.1 removed the unused AI command dialog; the AI Prompt Builder and Code Editor stay. The local command compiler still validates offline.
+ check('unused AI command dialog is removed (no API key UI anywhere)',await page.evaluate(()=>!document.querySelector('#open-ai')&&!document.querySelector('#ai-dialog')&&!document.querySelector('#ai-key')));
+ check('local command compiler still validates a plan without networking',await page.evaluate(()=>{const r=STUDIO.ai.compile({title:'Offline',summary:'',commands:[{op:'seek',time:2}]});return !!r&&STUDIO.objects.length===9;}));
  // Stop the first software-rendered context before opening the opaque iframe.
  await page.evaluate(()=>{window.requestAnimationFrame=()=>0;STUDIO.soundtrack.stopPreview();});const host=await context.newPage();watch(host);
  await host.setContent('<html><body style="margin:0"><iframe sandbox="allow-scripts" style="border:0;width:100vw;height:100vh"></iframe></body></html>');
@@ -49,9 +47,8 @@ try{
  check('embedded preview explains the download restriction',opaque.downloadNote);
  await frame.evaluate(()=>{const b=document.querySelector('.dock [data-panel="library"]'),i=document.querySelector('.dock [data-panel="inspector"]'),t=document.querySelector('.dock [data-panel="timeline"]');b.click();i.click();t.click();const r=STUDIO.addProp('block',new STUDIO.THREE.Vector3(2,3,4),{block:'stone'});STUDIO.select(r);});await frame.waitForTimeout(500);await frame.locator('#rot-y').fill('90');await frame.locator('#key-time').fill('3');await frame.locator('#key-time').press('Tab');await frame.locator('#key-pose').click();await frame.evaluate(()=>STUDIO.seek(1.5));
  check('fixed edit-first / time-second workflow animates inside the opaque preview',await frame.evaluate(()=>STUDIO.selected.keys.length===2&&Math.abs(STUDIO.selected.root.rotation.y-Math.PI/4)<1e-6));
- await frame.locator('#open-ai').click();await frame.locator('#ai-example').click();if(await frame.locator('#ai-ack-row').isVisible())await frame.locator('#ai-ack').check();await frame.locator('#ai-play-after').uncheck();await frame.locator('#ai-apply').click();await frame.waitForFunction(()=>!document.querySelector('#ai-dialog').open);
- check('local AI command execution also works in the opaque file preview',await frame.evaluate(()=>STUDIO.timeline.duration===10&&STUDIO.objects.some(r=>r.name==='Bob the explorer'&&r.character.keys.length>70)));
- check('opaque preview has no API key interface',await frame.evaluate(()=>!document.querySelector('#ai-key')));
+ check('opaque preview has no AI command dialog or API key interface',await frame.evaluate(()=>!document.querySelector('#ai-dialog')&&!document.querySelector('#ai-key')));
+ check('local command compiler also works in the opaque file preview',await frame.evaluate(()=>!!STUDIO.ai.compile({title:'Offline',summary:'',commands:[{op:'seek',time:1}]})));
  await frame.locator('#duration').fill('2');await frame.locator('#duration').press('Tab');await frame.locator('#open-export').click();await frame.locator('#video-size').selectOption('640x360');await frame.locator('#video-format').selectOption('webm');await frame.locator('#record-audio').uncheck();await frame.locator('#rec').click();await frame.waitForFunction(()=>!STUDIO.video.busy,null,{timeout:120000});
  check('restricted preview can retain a locally rendered clip without an auto-download',await frame.evaluate(()=>!!STUDIO.video.result&&STUDIO.video.result.blob.size>1000&&!document.querySelector('#video-ready').hidden&&document.querySelector('#video-download').href.startsWith('blob:')));
  check('restricted preview still explains that its parent can block downloads',await frame.evaluate(()=>!document.querySelector('#sandbox-note').hidden&&document.querySelector('#sandbox-note').textContent.includes('block downloads')));

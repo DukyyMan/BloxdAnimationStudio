@@ -21,13 +21,16 @@ try{
  page.once('dialog',d=>d.dismiss());const before=await source.inputValue();await page.locator('#code-example').click();assert.equal(await source.inputValue(),before,'cancel replacement preserves source');
  await source.fill('async function main(api) { api.timeline.setPlayhead(999); }');await page.locator('#code-validate').click();assert.match(await page.locator('#code-status').textContent(),/^Valid/);await page.locator('#code-apply').click();assert.equal(await page.evaluate(()=>STUDIO.timeline.time),await page.evaluate(()=>STUDIO.timeline.duration));
  // Partial JSON plans never apply on validation; dependent commands stop again.
- await page.locator('#open-ai').click();
+ // v4.1 removed the unused AI command dialog (#open-ai / #ai-dialog); the AI Prompt Builder and Code Editor stay.
+ // The partial-plan rule it covered is still checked on the command compiler that remains in lib/ai-commands.js:
+ // an invalid plan never applies, dependent commands keep failing, and the error names the command.
+ assert.equal(await page.locator('#open-ai').count(),0,'unused AI command button removed');assert.equal(await page.locator('#ai-dialog').count(),0,'unused AI dialog removed');
  const plan={title:'Recovery',summary:'',commands:[{op:'add',id:'bad',kind:'missing',position:[0,0,0]},{op:'transform',id:'bad',position:[1,0,0]},{op:'seek',time:2}]};
- await page.locator('#ai-json').fill(JSON.stringify(plan));const countBefore=await page.evaluate(()=>STUDIO.objects.length);
- await page.locator('#ai-validate').click();assert.match(await page.locator('#ai-status').textContent(),/Command 1/);
- await page.locator('#ai-skip').click();assert.match(await page.locator('#ai-status').textContent(),/Command 1/);assert.equal(await page.evaluate(()=>STUDIO.objects.length),countBefore);
- await page.locator('#ai-skip').click();assert.match(await page.locator('#ai-status').textContent(),/Validated/);assert.match(await page.locator('#ai-warnings').textContent(),/Skipped/);
- await page.locator('#ai-apply').click();assert.equal(await page.evaluate(()=>STUDIO.objects.length),countBefore);
+ const countBefore=await page.evaluate(()=>STUDIO.objects.length);
+ const compileError=p=>page.evaluate(p=>{try{STUDIO.ai.compile(p);return'';}catch(e){return e.message;}},p);
+ assert.match(await compileError(plan),/Command 1/);assert.equal(await page.evaluate(()=>STUDIO.objects.length),countBefore);
+ assert.match(await compileError({...plan,commands:plan.commands.slice(1)}),/Command 1/,'dependent command still fails once the add is skipped');
+ assert.equal(await compileError({...plan,commands:plan.commands.slice(2)}),'','remaining independent command validates');assert.equal(await page.evaluate(()=>STUDIO.objects.length),countBefore);
  // Drop on a clean character track. The actual drag/drop handlers bake real keys.
  await page.evaluate(()=>{const r=STUDIO.objects.find(x=>x.character);STUDIO.select(r);r.character.keys=[];STUDIO.seek(0);});
  await page.evaluate(()=>{const lane=document.querySelector('#pose-track'),rect=lane.getBoundingClientRect(),dt=new DataTransfer();dt.setData('application/x-studio-animation',JSON.stringify({type:'builtin',name:'wave'}));lane.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt,clientX:rect.left+rect.width*.125}));});
