@@ -49,6 +49,8 @@ try{
   await page.locator('[data-library="tools"]').click();await page.locator('#asset-search').fill('diamond');
   check('asset search filters the tool library',await page.locator('#asset-grid .asset-card').count()>7&&await page.locator('#asset-grid .asset-card').evaluateAll(cards=>cards.every(c=>c.title.toLowerCase().includes('diamond'))));
   await page.locator('[data-library="characters"]').click();await page.locator('.character-card').click();
+  check('adding Bob opens the customization screen',await page.evaluate(()=>document.querySelector('#bob-dialog').open));
+  await page.locator('#bob-default').click();
   check('spawn adds a separate character rig',await get(()=>STUDIO.objects.filter(o=>o.character).length===2));
   await page.locator('#undo').click();check('undo removes spawned character',await get(()=>STUDIO.objects.filter(o=>o.character).length===1));
 

@@ -36,6 +36,12 @@ import { initTours } from './lib/studio-tour.js';
 import { initChangelog } from './lib/changelog.js';
 import { generateSceneCode } from './lib/scene-to-code.js';
 import { initCodeStudio } from './lib/code-studio.js';
+import { attachLightRig, applyLightConfig, normalizeLightConfig, disposeLightRig, disposeLightsOf, updateLightsAtTime, setLightVisualsHidden, lightMarker, LIGHT_PRESETS, MAX_EMITTER_LIGHTS, emitterLightCount, canAddEmitterLight } from './lib/lights.js';
+import { applyMaterialSpec as applySpecToRoot, restoreOriginalMaterials, normalizeMaterialSpec, specHasContent, applyGlobalMaterialOverrides, materialOverrideEligible, globalOverrideSummary, resolveSpecTexture } from './lib/scene-materials.js';
+import { normalizeAppearance, applyAppearance, appearanceSummary, SKIN_TINTS, tintHex } from './lib/character-look.js';
+import { createMeshEditor, extractMeshParts } from './lib/mesh-editor.js';
+import { listMeshAssets, saveMeshAsset, deleteMeshAsset, meshStorageEstimate } from './lib/mesh-assets.js';
+import { MOB_AUDIT } from './lib/mob-audit-data.js';
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const clone=v=>JSON.parse(JSON.stringify(v));
@@ -90,6 +96,9 @@ async function main(){
   const cameraWorkspace=new CameraWorkspace(camera,orbit,canvas,helpers);
   const viewCamera=()=>cameraWorkspace.camera,viewOrbit=()=>cameraWorkspace.controls;
   const objects=[];let selected=null,serial=0,frames=0;
+  // ── v4.4 shared studio state: persistent groups, global overrides, settings ──
+  let groups=[]; // [{id,name,members:[record id],expanded}]
+  const studioSettings={material:{texture:'',smoothness:null,shininess:null},sky:{enabled:false,color:'#c5d6d3'}};
   const state={mode:'select',scope:'root',joint:'head',parts:[],toolAction:'place',category:'blocks',block:'grass',inspector:'object',selectedKey:null,keySel:emptySelection(),clean:false,libraryPage:0,libraryGroup:'',libraryAdvanced:false,pathMode:false,autoKey:false,onion:true,chainMode:false,chainQueue:[],fill:{on:false,plane:'auto',layers:1,raise:0},multi:[]};
   // Centralized keyboard shortcuts (persisted per browser) and navigation (fly) camera state.
   let shortcutStore=null;try{shortcutStore=window.localStorage;}catch(e){}
@@ -234,16 +243,104 @@ async function main(){
   }
   function prepEdit(r=selected){if(!r)return;setPlaying(false);viewOverride=true;if(r.character){r.character.pose=copyPose(r.character.displayPose);r.character.manual=true;r.character.live=false;$('#live-motion').checked=false;}}
 
+  const batchIds=new Set();
   function register(root,type,name,extra={}){
     const rec={id:'object-'+(++serial),type,name,root,keys:[],draft:null,rotationMode:'shortest',...extra};root.name=name;root.userData.studioId=rec.id;
     objectGroup.add(root);objects.push(rec);return rec;
   }
   function attachRecord(r){if(!objects.includes(r))objects.push(r);objectGroup.add(r.root);selectObject(r);}
-  function detachRecord(r){objectGroup.remove(r.root);const idx=objects.indexOf(r);if(idx>=0)objects.splice(idx,1);if(state.multi.includes(r)){state.multi=state.multi.filter(x=>x!==r);groupAnchor=null;disposeMultiHelpers();if(gizmo.object===multiProxy)gizmo.detach();}if(selected===r)selectObject(objects.find(o=>o.character)||objects[0]||null);else refreshAll();}
+  function detachRecord(r){disposeLightsOf(r.root);objectGroup.remove(r.root);const idx=objects.indexOf(r);if(idx>=0)objects.splice(idx,1);if(state.multi.includes(r)){state.multi=state.multi.filter(x=>x!==r);groupAnchor=null;disposeMultiHelpers();if(gizmo.object===multiProxy)gizmo.detach();}if(selected===r)selectObject(objects.find(o=>o.character)||objects[0]||null);else refreshAll();}
+  // ── Managed dynamic lights ─────────────────────────────────────────────────
+  // Every light-producing object owns exactly one LightRig whose config lives in
+  // r.options.light: the inspector edits it, project files save it, scrubbing
+  // and video export sample it through updateLightsAtTime.
+  function attachManagedLight(r){
+    if(!r?.root)return null;
+    const isEmitter=r.type==='particles';
+    const kind=isEmitter?(r.options?.ptype||'fire'):r.type;
+    if(isEmitter&&!['fire','sparkle'].includes(kind))return null;
+    if(!LIGHT_PRESETS[kind])return null;
+    if(isEmitter&&!canAddEmitterLight()){
+      r.options.light={...normalizeLightConfig(r.options?.light,kind),enabled:false};
+      return null;
+    }
+    const rig=attachLightRig(r.root,normalizeLightConfig(r.options?.light,kind),{isEmitter});
+    if(!rig)return null;
+    r.lightRig=rig;r.options.light={...rig.cfg};
+    return rig;
+  }
+  function applyRecordLight(r,cfg){
+    if(!r?.lightRig)return;
+    applyLightConfig(r.lightRig,cfg);
+    r.options.light={...r.lightRig.cfg};
+  }
+  // ── Persistent object groups ───────────────────────────────────────────────
+  // A group is metadata only: members keep their identities, transforms,
+  // materials, lights, rigs and animation tracks. Selecting the group feeds its
+  // members into the existing multi-selection transform path, so group moves,
+  // rotations and scales are pivot-correct and undoable without new math.
+  function groupOf(r){return r?.groupId?groups.find(g=>g.id===r.groupId)||null:null;}
+  function groupMembers(g){return g?objects.filter(r=>g.members.includes(r.id)):[];}
+  function purgeEmptyGroups(){groups=groups.filter(g=>{g.members=g.members.filter(id=>objects.some(r=>r.id===id));return g.members.length>0;});}
+  function syncGroupIds(){for(const g of groups)for(const id of g.members){const r=objects.find(o=>o.id===id);if(r)r.groupId=g.id;}}
+  function createGroupFromSelection(){
+    const members=[...new Set(state.multi.filter(eligibleForMulti))];
+    if(members.length<2){toast('Select at least two objects (Shift-click) to group them.');return;}
+    finishInputEdit();setPlaying(false);viewOverride=true;
+    const g={id:'group-'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),name:'Group '+(groups.length+1),members:members.map(r=>r.id),expanded:true};
+    const before=groups.slice();
+    groups.push(g);members.forEach(r=>r.groupId=g.id);
+    pushHistory('create '+g.name,
+      ()=>{groups=before.slice();members.forEach(r=>r.groupId=null);clearMulti();},
+      ()=>{groups=before.concat([g]);members.forEach(r=>r.groupId=g.id);});
+    clearMulti();selectGroupMembers(g);
+    refreshAll();
+    toast(g.name+' created from '+members.length+' objects · it moves, rotates and scales as one · Ungroup restores every individual object.');
+  }
+  function ungroupSelection(){
+    const targets=new Set();
+    if(state.multi.length>1)state.multi.forEach(r=>r.groupId&&targets.add(r.groupId));
+    else if(selected?.groupId)targets.add(selected.groupId);
+    if(!targets.size){toast('Select a group (or its members) to ungroup.');return;}
+    const before=groups.slice();
+    const affected=objects.filter(r=>r.groupId&&targets.has(r.groupId));
+    groups=groups.filter(g=>!targets.has(g.id));
+    affected.forEach(r=>r.groupId=null);
+    pushHistory('ungroup',()=>{groups=before.slice();syncGroupIds();},()=>{groups=groups.filter(g=>!targets.has(g.id));affected.forEach(r=>r.groupId=null);});
+    clearMulti();refreshAll();
+    toast('Ungrouped · every object keeps its identity, materials, lights and animation.');
+  }
+  function renameGroup(g,name){
+    if(!g)return;const old=g.name,n=String(name||'').trim().slice(0,60)||old;
+    if(n===old)return;g.name=n;
+    pushHistory('rename group',()=>{g.name=old;},()=>{g.name=n;});
+    refreshOutliner();refreshInspector();
+  }
+  function selectGroupMembers(g){
+    const members=groupMembers(g);
+    if(!members.length)return;
+    finishInputEdit();setPlaying(false);viewOverride=true;
+    state.multi=members.slice();
+    if(!state.multi.includes(selected))selectObject(members.find(r=>r.character)||members[0]);
+    rebaseGroupAnchor();refreshMultiHelpers();refreshOutliner();refreshInspector();
+    setMode('translate');
+    toast(g.name+' · '+members.length+' members selected — transform handles move the group.');
+  }
   function added(r){selectObject(r);showInspector('object');pushHistory('add '+r.name,()=>detachRecord(r),()=>attachRecord(r));toast(r.name+' added');}
   function spawnPosition(){const x=clamp(Math.round(orbit.target.x)+2,-7,7),z=clamp(Math.round(orbit.target.z)+2,-5,5);return new THREE.Vector3(x,world.heightAt(x,z),z);}
-  function addBob(position,name='Bob'){
-    const character=createCharacter(name);const r=register(character.root,'character',name,{character});character.root.position.copy(position);equip(character,'Diamond Pickaxe');return r;
+  function addBob(position,name='Bob',look=null){
+    const character=createCharacter(name);
+    // `look` is the dialog payload {appearance:{tint,armor,skin},skin}; the full
+    // normalized appearance is persisted so save/load and the inspector agree.
+    const appearance=normalizeAppearance(look?.appearance);
+    if(appearance)applyAppearance(character,appearance);
+    const r=register(character.root,'character',name,{character,options:appearance?{appearance}:{}});
+    character.root.position.copy(position);equip(character,'Diamond Pickaxe');
+    const skin=appearance?.skin;
+    if(skin){
+      new THREE.TextureLoader().loadAsync(skin).then(tex=>{character.material.map=pixelTexture(tex);character.skinData=skin;character.material.needsUpdate=true;}).catch(()=>toast('Custom skin could not be loaded.'));
+    }
+    return r;
   }
   function addProp(type,position,options={}){
     if(type==='block')options={...options,block:resolveBlock(options.block||'grass')||options.block};
@@ -254,8 +351,11 @@ async function main(){
     if(type==='lamp')root=makeLamp();
     if(type==='tool')root=makeTool(options.asset,1.2);
     if(type==='block')root=makeBlock(options.block||'grass');
+    if(type==='point-light'||type==='spot-light'){root=new THREE.Group();root.name=type==='point-light'?'Point light':'Spot light';root.add(lightMarker(type==='spot-light'?'spot':'point'));}
     if(!root)throw new Error('Unknown prop type: '+type);
-    const r=register(root,type,options.name||root.name,em?{options,emitter:em}:{options});root.position.copy(position);if(type==='tool')root.position.y+=.65;return r;
+    const r=register(root,type,options.name||root.name,em?{options,emitter:em}:{options});root.position.copy(position);if(type==='tool')root.position.y+=.65;
+    attachManagedLight(r);
+    return r;
   }
   const bob=addBob(new THREE.Vector3(1,1,1),'Bob');bob.root.rotation.y=.2;
   const tree1=addProp('tree',new THREE.Vector3(-4,1,-4));tree1.root.scale.setScalar(.88);
@@ -295,12 +395,14 @@ async function main(){
     const az=deg(light.az),el=deg(light.el),distance=36;
     sun.position.set(Math.sin(az)*Math.cos(el)*distance,Math.sin(el)*distance,Math.cos(az)*Math.cos(el)*distance);
     sun.target.position.set(0,1,0);sun.target.updateMatrixWorld();sun.color.set(light.color);sun.intensity=light.power;hemi.intensity=light.fill;
-    scene.background=skyboxTex||new THREE.Color(light.sky);floor.material.color.set(light.sky).multiplyScalar(.88);
+    // Studio settings' custom sky is an override layer above the Light tab's sky color.
+    const skyColor=studioSettings.sky.enabled?studioSettings.sky.color:light.sky;
+    scene.background=skyboxTex||new THREE.Color(skyColor);floor.material.color.set(skyColor).multiplyScalar(.88);
     renderDistanceUniform.value=clampRenderDistance(light.renderDist);
     // Fog fades out exactly where the render distance cuts, so nothing pops in/out.
-    scene.fog=light.fog?new THREE.Fog(light.fogColor||light.sky,Math.max(4,renderDistanceUniform.value*.45),Math.max(20,renderDistanceUniform.value*1.02)):null;viewport.classList.toggle('night-scene',light.fill<.6);
+    scene.fog=light.fog?new THREE.Fog(studioSettings.sky.enabled?skyColor:(light.fogColor||skyColor),Math.max(4,renderDistanceUniform.value*.45),Math.max(20,renderDistanceUniform.value*1.02)):null;viewport.classList.toggle('night-scene',light.fill<.6);
     renderer.toneMappingExposure=light.exposure??1.13;
-    updateWaterEnv({sunDir:sun.position,sky:light.sky,fog:scene.fog?{color:light.sky,near:scene.fog.near,far:scene.fog.far}:null});
+    updateWaterEnv({sunDir:sun.position,sky:skyColor,fog:scene.fog?{color:skyColor,near:scene.fog.near,far:scene.fog.far}:null});
     if(renderer.shadowMap.enabled!==light.shadows||renderer.shadowMap.type!==(light.soft?THREE.PCFSoftShadowMap:THREE.PCFShadowMap)){
       renderer.shadowMap.enabled=light.shadows;renderer.shadowMap.type=light.soft?THREE.PCFSoftShadowMap:THREE.PCFShadowMap;
       scene.traverse(o=>{if(o.material)for(const m of (Array.isArray(o.material)?o.material:[o.material]))m.needsUpdate=true;});
@@ -396,6 +498,7 @@ async function main(){
   function applyAtTime(t,includeCamera=true,includeDrafts=false){
     updateAssetAnimations(t);
     applySunKeys(t);
+    updateLightsAtTime(t);
     for(const r of objects){
       if(r.emitter)r.emitter.update(t);if(r.mixer&&r.animPlaying)r.mixer.setTime(t);
       const c=r.character;if(!c){const s=sampleTransform(r.keys||[],t,r.rotationMode);if(s)setTransform(r.root,s);if(includeDrafts&&r.draft)applyActorState(r,mergeEdit(sampledState(r,t),r.draft));continue;}
@@ -553,14 +656,29 @@ async function main(){
   function refreshOutliner(){
     const host=$('#outliner');host.replaceChildren();$('#obj-count').textContent=objects.length+1;
     const terrain=document.createElement('button');terrain.className='object-row';terrain.innerHTML=icon('grid')+'<span>Terrain</span><small>BLOCKS</small>';terrain.title='Select an individual block in the viewport';terrain.onclick=()=>{state.category='blocks';refreshLibrary();setMode('select');toast('Click a block to select it, or use Place / Remove in the library.');};host.append(terrain);
-    for(const r of objects){
+    const rowFor=(r,indent)=>{
       const b=document.createElement('button');b.className='object-row'+(r===selected||state.multi.includes(r)?' active':'');b.dataset.object=r.id;
-      b.innerHTML=icon(r.character?'person':r.type==='lamp'?'sun':'cube');
+      if(indent)b.style.paddingLeft='26px';
+      b.innerHTML=icon(r.character?'person':r.type==='lamp'||r.lightRig?'sun':'cube');
       const label=document.createElement('span');label.textContent=r.name;b.append(label);
       if(r===selected){const s=document.createElement('small');s.textContent='SELECTED';b.append(s);}
       else if(state.multi.includes(r)){const s=document.createElement('small');s.textContent='GROUP';b.append(s);}
       b.onclick=()=>{selectObject(r);showInspector('object');};b.ondblclick=()=>focusObject(r);host.append(b);
+    };
+    const grouped=new Set(groups.flatMap(g=>g.members));
+    for(const g of groups){
+      const members=groupMembers(g);if(!members.length)continue;
+      const b=document.createElement('button');b.className='object-row'+(members.every(m=>state.multi.includes(m))?' active':'');b.dataset.group=g.id;
+      const chev=document.createElement('span');chev.className='group-chevron';chev.textContent=g.expanded?'▾':'▸';b.append(chev);
+      const ico=document.createElement('span');ico.innerHTML=icon('folder');ico.style.cssText='width:13px;height:13px;display:inline-flex';b.append(ico);
+      const label=document.createElement('span');label.textContent=g.name+' ('+members.length+')';b.append(label);
+      b.title='Click: select the whole group · double-click: rename · chevron: expand / collapse';
+      b.onclick=e=>{if(e.target===chev){g.expanded=!g.expanded;refreshOutliner();return;}selectGroupMembers(g);showInspector('object');};
+      b.ondblclick=e=>{e.preventDefault();const n=prompt('Rename group:',g.name);if(n)renameGroup(g,n);};
+      host.append(b);
+      if(g.expanded)members.forEach(m=>rowFor(m,true));
     }
+    for(const r of objects)if(!grouped.has(r.id))rowFor(r,false);
   }
   function refreshInspector(){
     refreshPartPanel();const r=selected;
@@ -569,7 +687,7 @@ async function main(){
     $('#object-empty').hidden=group?false:!!r;$('#object-controls').hidden=group?false:!r;
     $('#selection-type').textContent=group?'MULTI · '+state.multi.length:r?(state.scope==='part'?'BODY PART':state.scope==='held'?'HELD ITEM':r.type.toUpperCase()):'NOTHING';
     $('#selected-target').textContent=group?state.multi.length+' objects · group transform':r?(r.character?r.name+' · '+targetLabel():r.name):'Click a block, tool or player';updateKeyUI();
-    if(group){$('#target-name').textContent=state.multi.length+' objects (group)';$('#scope-actions').hidden=true;$('#object-name').value=r?r.name:'';$('#pending-edit').hidden=true;$('#keyframe-hint')&&0;return;}
+    if(group){$('#target-name').textContent=state.multi.length+' objects (group)';$('#scope-actions').hidden=true;$('#object-name').value=r?r.name:'';$('#pending-edit').hidden=true;syncGroupUI();$('#material-controls').hidden=true;$('#light-controls').hidden=true;return;}
     if(!r)return;
     if(r.character&&state.scope==='held'&&!r.character.mount.children.length)state.scope='root';
     const target=selectedTarget(),part=state.scope==='part',multi=part&&selectedParts().length>1;
@@ -585,6 +703,8 @@ async function main(){
     const tool=r.type==='tool'?r.options.asset:(r.character&&!part&&r.character.tool!=='none'?r.character.tool:null),texture=tool?toolTextureName(tool):r.type==='block'?blockDefs[resolveBlock(r.options.block)]?.icon:null;
     $('#texture-preview').hidden=!texture||!textureURL(texture);if(texture&&textureURL(texture)){const meta=catalog.textureMeta[texture]||{};$('#texture-image').src=textureURL(texture);$('#texture-image').alt=meta.name||texture;$('#texture-filename').textContent=meta.name||texture+'.png';$('#download-texture').dataset.texture=texture;$('#tool-shading-row').hidden=!tool;$('#tool-shading').checked=light.toolLit;$('#texture-preview p').textContent=meta.kind==='palette-tint'?'Original grayscale art + the game’s equipment color palette.':meta.kind==='model-image'?'Texture extracted from the source model.':tool?'Original PNG colors are preserved by default.':'Source texture / inventory icon; individual block faces can differ.';}
     if(r.character){
+      $('#bob-tint').value=r.options.appearance?.tint||'default';
+      $('#bob-appearance-note').textContent=appearanceSummary(r.options.appearance);
       $('#held-tool').value=r.character.tool;$('#live-motion').checked=r.character.live;$('#show-joints').checked=r.character.markers.visible;refreshJointUI();
       for(const s of ARMOR_SLOTS){const sel=$('#armor-'+s);if(sel)sel.value=r.character.armor?.[s]||'';}
       $$('[data-pose]').forEach(b=>b.classList.toggle('active',b.dataset.pose===r.character.preset));
@@ -593,6 +713,9 @@ async function main(){
       $('#model-anim').disabled=!r.animations?.length;$('#model-anim').checked=!!r.animPlaying;$('#voxelize').disabled=r.type==='voxel';
       $('#model-note').textContent=r.animations?.length?`${r.animations.length} embedded clip(s). Playback uses the first clip.`:'No embedded animation in this model.';
     }
+    if(r.type==='mesh'&&r.options?.meshAssetName)$('#object-kind').textContent='Custom mesh · from saved asset "'+r.options.meshAssetName+'"';
+    $('#edit-mesh').hidden=r.type!=='mesh';
+    syncMaterialControls();syncObjectLightUI();syncGroupUI();
   }
   function refreshJointUI(){
     const c=selected?.character;if(!c)return;const p=c.displayPose,id=$('#joint-select').value||'head';
@@ -626,13 +749,19 @@ async function main(){
     sel.value=imageAssets.some(a=>a.id===cur)?cur:'';
   }
   function refreshLibrary(){
-    const token=++libraryToken,isBlocks=state.category==='blocks',isItems=state.category==='tools',isModels=state.category==='models',isTextures=state.category==='textures',isBob=state.category==='characters',isBuilds=state.category==='builds',isFx=state.category==='fx';
-    $$('[data-library]').forEach(b=>b.classList.toggle('active',b.dataset.library===state.category));$('#block-edit-actions').hidden=!isBlocks;if(isBlocks)syncBlockTexUI();$('#tool-edit-actions').hidden=!(isItems||isModels);$('#fx-actions').hidden=!isFx;if(isFx)refreshParticleTexOptions();$('#terrain-panel').hidden=!(isBlocks&&state.mode==='terrain');$('#zone-panel').hidden=!(isBlocks&&state.mode==='zone');$('#fill-panel').hidden=!(isBlocks&&state.fill.on&&['build','erase'].includes(state.mode));
-    $('#asset-action-note').textContent=isBlocks?'Place / Remove to build. Select + Rotate to animate a block.':isItems||isModels?(state.toolAction==='place'?'Place a separate, rotatable asset. A ghost preview follows your cursor — click to set it down, Esc cancels. Models are static source geometry.':'Select a player, then choose an asset to hold. Adjust its grip in Held item.') :isBuilds?'Whole builds from the open map-editor pack. Click one, then click the world — a ghost shows where it lands. Esc cancels.':isTextures?'All PNG files, embedded model images and labeled palette variants. Click to inspect / download.':'The built-in, editable classic Bob recreation.';
+    const token=++libraryToken,isBlocks=state.category==='blocks',isItems=state.category==='tools',isModels=state.category==='models',isTextures=state.category==='textures',isBob=state.category==='characters',isBuilds=state.category==='builds',isFx=state.category==='fx',isLights=state.category==='lights',isMeshes=state.category==='meshes',isMobs=state.category==='mobs';
+    $$('[data-library]').forEach(b=>b.classList.toggle('active',b.dataset.library===state.category));$('#block-edit-actions').hidden=!isBlocks;if(isBlocks)syncBlockTexUI();$('#tool-edit-actions').hidden=!(isItems||isModels);$('#fx-actions').hidden=!isFx;if(isFx)refreshParticleTexOptions();$('#mesh-actions').hidden=!isMeshes;if(isMeshes)refreshMeshAssetsCache();$('#terrain-panel').hidden=!(isBlocks&&state.mode==='terrain');$('#zone-panel').hidden=!(isBlocks&&state.mode==='zone');$('#fill-panel').hidden=!(isBlocks&&state.fill.on&&['build','erase'].includes(state.mode));
+    $('#asset-action-note').textContent=isBlocks?'Place / Remove to build. Select + Rotate to animate a block.':isItems||isModels?(state.toolAction==='place'?'Place a separate, rotatable asset. A ghost preview follows your cursor — click to set it down, Esc cancels. Models are static source geometry.':'Select a player, then choose an asset to hold. Adjust its grip in Held item.') :isBuilds?'Whole builds from the open map-editor pack. Click one, then click the world — a ghost shows where it lands. Esc cancels.':isTextures?'All PNG files, embedded model images and labeled palette variants. Click to inspect / download.':isLights?'Point and spot lights are real scene lights with per-object controls (intensity, color, range, flicker, cone). Fire, sparkles and the lantern already emit light on their own.':isMeshes?'Meshes you saved in the Custom Mesh Workshop. Add them to any project, edit them again, or delete them — they live in your browser storage.':isMobs?'Every official Bloxd mob type with its verified integration status from the reproducible audit (tools/audit-mobs.py). No substitute mobs are offered.':'The built-in, editable classic Bob recreation.';
     $('#place-tools').classList.toggle('active',state.toolAction==='place');$('#equip-tools').classList.toggle('active',state.toolAction==='equip');
-    $('#catalog-summary').textContent=isBuilds?prefabAssets.length.toLocaleString()+' prefab builds · houses, trees, rocks & stands':catalog.counts.liveBlockRoots.toLocaleString()+' base blocks · '+catalog.counts.liveItemEntries.toLocaleString()+' item entries';
+    $('#catalog-summary').textContent=isBuilds?prefabAssets.length.toLocaleString()+' prefab builds · houses, trees, rocks & stands':isMobs?MOB_AUDIT.officialTypes+' official mob types audited · '+MOB_AUDIT.usable+' with animation-ready rigs':isMeshes?meshAssetsCache.length+' saved mesh asset'+(meshAssetsCache.length===1?'':'s'):catalog.counts.liveBlockRoots.toLocaleString()+' base blocks · '+catalog.counts.liveItemEntries.toLocaleString()+' item entries';
     const query=$('#asset-search').value.trim().toLowerCase(),words=query.split(/\s+/).filter(Boolean),host=$('#asset-grid');host.replaceChildren();host.classList.toggle('characters',isBob);
-    let rows=isBlocks?catalog.blockOrder.map(id=>({id,...blockDefs[id],name:blockDefs[id].label,kind:'block'})):isItems?catalog.itemOrder.map(id=>({id,...itemDefs[id]})):isModels?catalog.sourceModels.map(r=>({...r,id:r.asset,name:r.name,kind:'model'})):isBuilds?prefabAssets.map(a=>({id:a.n,name:prefabLabel(a),kind:'build',group:a.t[0].toUpperCase()+a.t.slice(1),available:true,meta:a})):isTextures?Object.entries(catalog.textureMeta).map(([id,m])=>({id,name:m.name,kind:'texture',group:({'original-pack':'Original pack PNGs','live-png':'Live additions','model-image':'Model images','palette-tint':'Equipment color variants'})[m.kind],available:true,meta:m})):isFx?fxRows():[{id:'bob',name:'Bob',kind:'character',group:'Poseable',available:true}];
+    let rows=isBlocks?catalog.blockOrder.map(id=>({id,...blockDefs[id],name:blockDefs[id].label,kind:'block'})):isItems?catalog.itemOrder.map(id=>({id,...itemDefs[id]})):isModels?catalog.sourceModels.map(r=>({...r,id:r.asset,name:r.name,kind:'model'})):isBuilds?prefabAssets.map(a=>({id:a.n,name:prefabLabel(a),kind:'build',group:a.t[0].toUpperCase()+a.t.slice(1),available:true,meta:a})):isTextures?Object.entries(catalog.textureMeta).map(([id,m])=>({id,name:m.name,kind:'texture',group:({'original-pack':'Original pack PNGs','live-png':'Live additions','model-image':'Model images','palette-tint':'Equipment color variants'})[m.kind],available:true,meta:m})):isFx?fxRows():isLights?[
+      {id:'point-light',name:'Point light',kind:'light',group:'Light objects',available:true},
+      {id:'spot-light',name:'Spot light',kind:'light',group:'Light objects',available:true},
+      {id:'info-lamp',name:'Lantern (existing)',kind:'light-note',group:'Already luminous',available:true},
+      {id:'info-fire',name:'Fire particles (existing)',kind:'light-note',group:'Already luminous',available:true},
+      {id:'info-sparkle',name:'Sparkles (existing)',kind:'light-note',group:'Already luminous',available:true},
+    ]:isMeshes?meshAssetsCache.map(a=>({id:a.id,name:a.name,kind:'mesh-asset',group:'Saved meshes',available:true,meta:a})):isMobs?MOB_AUDIT.mobs.map(m=>({id:m.name,name:m.name,kind:'mob',group:'Official mobs',available:true,meta:m})):[{id:'bob',name:'Bob',kind:'character',group:'Poseable',available:true}];
     const groupSelect=$('#catalog-group'),groups=[...new Set(rows.map(r=>r.group).filter(Boolean))].sort();groupSelect.replaceChildren();const all=document.createElement('option');all.value='';all.textContent='All groups';groupSelect.append(all);for(const g of groups){const o=document.createElement('option');o.value=g;o.textContent=g;groupSelect.append(o);}groupSelect.value=groups.includes(state.libraryGroup)?state.libraryGroup:'';state.libraryGroup=groupSelect.value;
     $('.catalog-filters').hidden=isBob;$('.catalog-filters label').hidden=isTextures||isModels||isBuilds||isFx;$('#catalog-advanced').checked=state.libraryAdvanced;
     rows=rows.filter(r=>(!state.libraryGroup||r.group===state.libraryGroup)&&((query||state.libraryAdvanced)||(!r.variant&&!r.internal))&&words.every(w=>(r.name+' '+r.id+' '+(r.group||'')).toLowerCase().includes(w)));
@@ -640,13 +769,14 @@ async function main(){
     $('#catalog-count').textContent=rows.length?(offset+1)+'–'+(offset+visible.length)+' of '+rows.length.toLocaleString():'No matches';$('#catalog-page').textContent=(state.libraryPage+1)+' / '+pages;$('#catalog-prev').disabled=state.libraryPage===0;$('#catalog-next').disabled=state.libraryPage>=pages-1;$('.catalog-pages').hidden=isBob;
     for(const r of visible){
       const button=document.createElement('button');button.className='asset-card'+(!r.available?' unavailable':'');button.title=r.name;button.dataset.asset=r.id;
-      const image=document.createElement('img');image.alt='';image.loading='lazy';image.src=isBlocks?blockIcon(r.id):isBuilds?prefabIcon(r.meta.t):isTextures?textureURL(r.id):isBob?skinThumb:isFx?(r.kind==='image-asset'?r.meta.url:fxIcon(r.kind==='png-import'?'png':r.id)):toolIcon(isModels?r.asset:r.id)||fallbackIcon();if(isBlocks&&!r.model&&r.shape==='cube')image.className='block-thumb';button.append(image);
-      const label=document.createElement('span');label.textContent=r.name;button.append(label);const tag=document.createElement('i');tag.className='asset-tag';tag.textContent=!r.available?'No published visual':isBuilds?r.meta.b.toLocaleString()+' blocks':r.variant?'State variant':isModels?'Source model':r.kind==='block-item'?'Held block':r.kind==='texture'?(r.meta.kind==='original-pack'?'Original PNG':r.group):r.kind==='particle'?'Emitter':r.kind==='png-import'?'PNG · JPG · WebP':r.kind==='image-asset'?'3D panel':isBlocks&&r.shape!=='cube'?r.shape.replace('|rotatable',''):'';button.append(tag);
+      const image=document.createElement('img');image.alt='';image.loading='lazy';image.src=isBlocks?blockIcon(r.id):isBuilds?prefabIcon(r.meta.t):isTextures?textureURL(r.id):isBob?skinThumb:isFx?(r.kind==='image-asset'?r.meta.url:fxIcon(r.kind==='png-import'?'png':r.id)):isMeshes?(r.meta.thumb||fallbackIcon()):isLights?lightIcon(r.kind):isMobs?mobGlyph():toolIcon(isModels?r.asset:r.id)||fallbackIcon();if(isBlocks&&!r.model&&r.shape==='cube')image.className='block-thumb';button.append(image);
+      const label=document.createElement('span');label.textContent=r.name;button.append(label);const tag=document.createElement('i');tag.className='asset-tag';tag.textContent=!r.available?'No published visual':isBuilds?r.meta.b.toLocaleString()+' blocks':r.variant?'State variant':isModels?'Source model':r.kind==='light'?'Real light':r.kind==='light-note'?'Emits light':r.kind==='mesh-asset'?'Saved mesh':r.kind==='mob'?(r.meta.variations.length>1?r.meta.variations.length+' variations':'Official mob'):r.kind==='block-item'?'Held block':r.kind==='texture'?(r.meta.kind==='original-pack'?'Original PNG':r.group):r.kind==='particle'?'Emitter':r.kind==='png-import'?'PNG · JPG · WebP':r.kind==='image-asset'?'3D panel':isBlocks&&r.shape!=='cube'?r.shape.replace('|rotatable',''):'';button.append(tag);
+      if(isMobs){const badge=document.createElement('span');badge.className='mob-status unavailable';badge.textContent='Not riggable';button.append(badge);}
       if(!r.available){button.disabled=true;button.title=r.name+' — listed in the catalog, but no published graphic was found.';}
       else button.onclick=()=>{
         if(isBlocks){state.block=r.id;setPlaying(false);setMode('build');touchClosePanels();refreshLibrary();}
         else if(isTextures)showTextureAsset(r.id);
-        else if(isBob){const n=objects.filter(o=>o.character).length+1;added(addBob(spawnPosition(),'Bob '+String(n).padStart(2,'0')));touchClosePanels();}
+        else if(isBob){openBobDialog('add');touchClosePanels();}
         else if(isBuilds){try{startSchemGhost(prefabLabel(r.meta),prefabCells(r.meta));}catch(err){toast('Could not read '+r.meta.n+': '+err.message);}}
         else if(isFx){
           if(r.kind==='particle'){
@@ -659,6 +789,12 @@ async function main(){
           else if(r.kind==='image-asset')placeImageAsset(r.meta);
           return;
         }
+        else if(isLights){
+          if(r.kind==='light'){const n=objects.filter(o=>o.type===r.id).length+1;added(addProp(r.id,spawnPosition(),{name:(r.id==='point-light'?'Point light ':'Spot light ')+n}));touchClosePanels();}
+          else toast(r.name+' already emits light — place it from its own category, then adjust it in the Object inspector.');
+        }
+        else if(isMeshes)addMeshAssetToScene(r.meta);
+        else if(isMobs)showMobDetail(r.meta);
         else{const asset=isModels?r.asset:r.id;if(state.toolAction==='equip'){if(!selected?.character){toast('Select a player first, then choose an item.');return;}equipTool(selected,asset);setScope('held');setMode('rotate');touchClosePanels();showInspector('object');}else startPropGhost(asset);}
       };
       if(isBlocks&&state.mode==='build'&&r.id===state.block)button.classList.add('active');
@@ -2018,21 +2154,12 @@ async function main(){
     }
     return group;
   }
+  // Delegates to the shared material system (scene-materials.js): one code path
+  // for AI plans, the inspector and project restore. Originals are remembered so
+  // reset / global-override-off can always restore them.
   function applyObjectMaterial(root,spec){
     if(!spec)return;
-    root.traverse(o=>{if(!o.isMesh)return;for(const m of (Array.isArray(o.material)?o.material:[o.material])){
-      if(spec.color!==undefined)m.color.set(spec.color);
-      if(spec.roughness!==undefined)m.roughness=spec.roughness;
-      if(spec.metalness!==undefined)m.metalness=spec.metalness;
-      if(spec.opacity!==undefined){m.opacity=spec.opacity;m.transparent=m.transparent||spec.opacity<1;}
-      if(spec.emissive!==undefined){m.emissive.set(spec.emissive);m.emissiveIntensity=spec.emissiveIntensity??1;}
-      if(spec.texture!==undefined){const tex=textures[spec.texture];if(tex){m.map=tex;m.needsUpdate=true;}}
-      if(spec.transparent!==undefined)m.transparent=spec.transparent;
-      if(spec.emissiveIntensity!==undefined)m.emissiveIntensity=spec.emissiveIntensity;
-      if(spec.flatShading!==undefined)m.flatShading=spec.flatShading;
-      if(spec.wireframe!==undefined)m.wireframe=spec.wireframe;
-      m.needsUpdate=true;
-    }});
+    applySpecToRoot(root,spec,{textures,imageAssets});
   }
   function createAIRecord(data){
     let root,character;
@@ -2044,7 +2171,10 @@ async function main(){
     else if(data.type==='lamp')root=makeLamp();
     else if(data.type==='mesh')root=buildMeshParts(data.options?.parts);
     else throw new Error('AI cannot create this object type.');
-    root.name=data.name;root.userData.studioId=data.id;return{id:data.id,type:data.type,name:data.name,root,character,options:clone(data.options||{}),keys:[],draft:null,rotationMode:data.rotationMode==='spins'?'spins':'shortest'};
+    root.name=data.name;root.userData.studioId=data.id;
+    const rec={id:data.id,type:data.type,name:data.name,root,character,options:clone(data.options||{}),keys:[],draft:null,rotationMode:data.rotationMode==='spins'?'spins':'shortest'};
+    attachManagedLight(rec);
+    return rec;
   }
   function restoreAIScene(snapshot,registry){
     setPlaying(false);gizmo.detach();objectGroup.clear();objects.length=0;
@@ -2056,7 +2186,7 @@ async function main(){
       setTransform(r.root,d.transform);
       if(r.options.visibility!==undefined)r.root.visible=!!r.options.visibility;
       if(r.options.material)applyObjectMaterial(r.root,r.options.material);
-      if(r.character&&r.options.skin){const tint={default:0xffffff,ember:0xff9a5a,frost:0x7fd4ff,moss:0x8fd17a}[r.options.skin];if(tint!==undefined)r.character.material.color.setHex(tint);}
+      if(r.character){const savedApp=normalizeAppearance(r.options.appearance);if(savedApp)applyAppearance(r.character,savedApp);const tint=tintHex(r.options.skin);if(tint!==SKIN_TINTS.default.color&&tintHex(r.options.appearance?.tint)===SKIN_TINTS.default.color)r.character.material.color.setHex(tint);}
       if(r.options.attach)attached.add(r.id);
       if(r.character){const c=r.character,a=d.character;if(a.detached&&typeof a.detached==='object')for(const id of Object.keys(JOINTS))setDetached(c,id,Array.isArray(a.detached[id])?a.detached[id]:null);c.keys=clone(a.keys);c.pose=copyPose(a.pose);c.preset=a.preset;c.live=!!a.live;c.manual=a.manual!==false;c.speed=a.speed||1;c.markers.visible=!!a.markers;if(c.tool!==a.tool||!c.mount.children.length&&a.tool!=='none')equip(c,a.tool);setHeld(c,a.held);applyPose(c,c.pose);}
       objects.push(r);if(!attached.has(r.id))objectGroup.add(r.root);
@@ -2090,14 +2220,14 @@ async function main(){
 
   // Self-contained project files. AI credentials are never part of this data.
   function serializeRecord(r){
-    const data={name:r.name,type:r.type,transform:transformOf(r.root),options:r.options||{},rotationMode:r.rotationMode||'shortest'};if(r.draft)data.draft=clone(r.draft);
+    const data={id:r.id,name:r.name,type:r.type,transform:transformOf(r.root),options:r.options||{},rotationMode:r.rotationMode||'shortest'};if(r.draft)data.draft=clone(r.draft);
     if(r.character){const c=r.character;data.character={pose:copyPose(c.displayPose),keys:clone(c.keys),tool:c.tool,held:heldOf(c),preset:c.preset,live:c.live,speed:c.speed,manual:c.manual,skin:c.skinData||null,armor:c.armor||null};if(Object.keys(c.detached||{}).length)data.character.detached=clone(c.detached);}
     else if(r.type==='import'||r.type==='voxel'||r.type==='image'||r.type==='mesh')data.object=r.root.toJSON();
     if(!r.character)data.keys=clone(r.keys||[]);if(r.animations?.length){data.animPlaying=!!r.animPlaying;data.mixerTime=r.mixer?.time||0;}return data;
   }
-  function projectData(){return{format:'bloxd-studio',version:PROJECT_VERSION,editorVersion:'4.3.0',editor:{...cameraWorkspace.data(),timeline:{...timelineView,scrollLeft:$('#timeline-scroll').scrollLeft},timelineUI:{height:timelineUI.height,collapsed:timelineUI.collapsed},autoKey:state.autoKey,onion:state.onion,selection:objects.indexOf(selected),scope:state.scope,joint:state.joint,parts:state.parts},sceneName,audio:{...clone(soundtrack.state),preview:$('#preview-audio').checked,includeVideo:$('#record-audio').checked},world:{blocks:[...world.map],size:world.size,seed:world.seed},objects:objects.map(serializeRecord),light:clone(light),camera:{keys:clone(camTrack.keys),smooth:camTrack.smooth,distortion:clone(distKeys),view:{position:camera.position.toArray(),target:orbit.target.toArray(),quaternion:camera.quaternion.toArray(),fov:camera.fov}},images:imageAssets.map(a=>({id:a.id,name:a.name,url:a.url})),skybox:skyboxURL,customTextures:Object.fromEntries([...customBlockTex].map(([id,e])=>[id,e.url])),timeline:{...timeline,playing:false}};}
+  function projectData(){return{format:'bloxd-studio',version:PROJECT_VERSION,editorVersion:'4.4.0',editor:{...cameraWorkspace.data(),timeline:{...timelineView,scrollLeft:$('#timeline-scroll').scrollLeft},timelineUI:{height:timelineUI.height,collapsed:timelineUI.collapsed},autoKey:state.autoKey,onion:state.onion,selection:objects.indexOf(selected),scope:state.scope,joint:state.joint,parts:state.parts},sceneName,audio:{...clone(soundtrack.state),preview:$('#preview-audio').checked,includeVideo:$('#record-audio').checked},world:{blocks:[...world.map],size:world.size,seed:world.seed},objects:objects.map(serializeRecord),groups:clone(groups.map(g=>({...g,members:g.members.filter(id=>objects.some(r=>r.id===id))}))).filter(g=>g.members.length),settings:clone(studioSettings),light:clone(light),camera:{keys:clone(camTrack.keys),smooth:camTrack.smooth,distortion:clone(distKeys),view:{position:camera.position.toArray(),target:orbit.target.toArray(),quaternion:camera.quaternion.toArray(),fov:camera.fov}},images:imageAssets.map(a=>({id:a.id,name:a.name,url:a.url})),skybox:skyboxURL,customTextures:Object.fromEntries([...customBlockTex].map(([id,e])=>[id,e.url])),timeline:{...timeline,playing:false}};}
   async function recordFromData(data){
-    if(!data||!['character','tree','rock','lamp','tool','block','import','voxel','image','particles','mesh'].includes(data.type))throw new Error('Unknown object type.');
+    if(!data||!['character','tree','rock','lamp','tool','block','import','voxel','image','particles','mesh','point-light','spot-light'].includes(data.type))throw new Error('Unknown object type.');
     const vec=v=>Array.isArray(v)&&v.length===3&&v.every(n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<1000);
     if(!data.transform||!vec(data.transform.position)||!vec(data.transform.rotation)||!vec(data.transform.scale))throw new Error('Invalid object transform.');
     let r;
@@ -2106,6 +2236,7 @@ async function main(){
       if(cdata.skin){if(!String(cdata.skin).startsWith('data:image/'))throw new Error('Only embedded skin images are supported.');c.material.map=pixelTexture(await new THREE.TextureLoader().loadAsync(cdata.skin));c.skinData=cdata.skin;}
       // Detached parts (v4.1, optional): validated pivots only; older projects have none.
       if(cdata.detached&&typeof cdata.detached==='object')for(const[id,b]of Object.entries(cdata.detached))if(JOINTS[id]&&vec(b))setDetached(c,id,b);
+      const savedApp=normalizeAppearance(data.options?.appearance);if(savedApp)applyAppearance(c,savedApp);
       c.pose=copyPose(cdata.pose||neutralPose());c.keys=clone(cdata.keys||[]);c.preset=cdata.preset||'idle';c.live=!!cdata.live;c.speed=cdata.speed??1;c.manual=cdata.manual!==false;applyPose(c,c.pose);equip(c,toolNames.includes(cdata.tool)?cdata.tool:'none');setHeld(c,cdata.held);wearArmor(c,cdata.armor);r=register(c.root,'character',String(data.name).slice(0,60),{character:c,options:clone(data.options||{})});
     }else if(data.type==='import'||data.type==='voxel'||data.type==='image'||data.type==='mesh'){
       for(const image of data.object?.images||[]){const urls=Array.isArray(image.url)?image.url:[image.url];if(urls.some(u=>typeof u==='string'&&!u.startsWith('data:')))throw new Error('Projects must embed their textures, not link to external files.');}
@@ -2113,7 +2244,25 @@ async function main(){
       if(r.animations.length&&(data.animPlaying||data.mixerTime>0)){r.animPlaying=!!data.animPlaying;r.mixer=new THREE.AnimationMixer(root);r.action=r.mixer.clipAction(r.animations[0]);r.action.play();r.mixer.setTime(data.mixerTime||0);r.action.paused=!r.animPlaying;}
     }else{r=addProp(data.type,new THREE.Vector3(),data.options||{});r.name=r.root.name=String(data.name).slice(0,60);
       if(data.type==='particles'&&data.options?.ptex){r.options={...r.options,ptex:String(data.options.ptex).slice(0,40)};const tex=await imageAssetTexture(r.options.ptex);if(tex&&r.emitter)setEmitterTexture(r.emitter,tex);}}
-    setTransform(r.root,data.transform);r.rotationMode=data.rotationMode==='spins'?'spins':'shortest';if(!r.character)r.keys=clone(data.keys||[]);r.draft=validateDraft(data.draft,poseState(r));return r;
+    // Keep the saved object id so groups (which reference ids) survive save/load.
+    // batchIds tracks ids already claimed by this load batch (old records still
+    // sit in `objects` while the new ones are being built).
+    if(typeof data.id==='string'&&/^[\w-]{1,60}$/.test(data.id)&&!batchIds.has(data.id)){batchIds.add(data.id);r.id=data.id;r.root.userData.studioId=data.id;}
+    setTransform(r.root,data.transform);r.rotationMode=data.rotationMode==='spins'?'spins':'shortest';if(!r.character)r.keys=clone(data.keys||[]);r.draft=validateDraft(data.draft,poseState(r));
+    // Restore v4.4 per-object configuration: saved material edits, light config and Bob appearance.
+    if(r.character){
+      const app=normalizeAppearance(data.options?.appearance);
+      if(app){applyAppearance(r.character,app);r.options.appearance=app;}
+    }else if(specHasContent(data.options?.material)){
+      const spec=clone(data.options.material);
+      if(typeof spec.texture==='string'&&spec.texture.startsWith('asset:')){
+        const tex=await imageAssetTexture(spec.texture.slice(6)).catch(()=>null);
+        if(!tex){delete spec.texture;toast('An image asset used by '+r.name+' could not be loaded; its other material settings were restored.');}
+      }
+      applySpecToRoot(r.root,spec,{textures,imageAssets});
+    }
+    if(r.lightRig&&data.options?.light)applyRecordLight(r,normalizeLightConfig(data.options.light,data.type));
+    return r;
   }
   async function loadProject(data){
     if(loadingProject)throw new Error('A project is already loading. Please wait.');
@@ -2128,12 +2277,17 @@ async function main(){
     imageAssets.length=0;
     for(const im of Array.isArray(data.images)?data.images.slice(0,60):[]){if(typeof im?.id==='string'&&typeof im?.url==='string'&&im.url.startsWith('data:image/')&&im.url.length<12e6)imageAssets.push({id:im.id.slice(0,40),name:String(im.name||'Image').slice(0,40),url:im.url,tex:null});}
     distKeys=(Array.isArray(data.camera?.distortion)?data.camera.distortion:[]).filter(k=>Number.isFinite(k?.time)&&Number.isFinite(k?.amount)).map(k=>({...clone(k),time:clamp(+k.time,0,MAX_DURATION),amount:clamp(+k.amount,0,1)}));
-    const oldObjects=objects.slice(),newObjects=[];
+    const oldObjects=objects.slice(),newObjects=[];batchIds.clear();
     try{for(const d of data.objects){const rec=await recordFromData(d);if(data.version===1&&d.type==='tool'){const matrix=rec.root.matrix.clone(),stand=addProp('block',new THREE.Vector3(0,.375,0).applyMatrix4(matrix),{block:'log',name:rec.name+' stand'});stand.root.rotation.copy(rec.root.rotation);stand.root.scale.copy(rec.root.scale).multiplyScalar(.75);newObjects.push(stand);rec.root.position.set(0,1.43,0).applyMatrix4(matrix);}newObjects.push(rec);}await soundtrack.loadState(data.audio||{source:'builtin',volume:.7,offset:0,loop:false});}
     catch(e){for(const r of objects.slice())if(!oldObjects.includes(r))detachRecord(r);throw e;}
     setPlaying(false);releaseNavKeys();gizmo.detach();for(const r of oldObjects){objectGroup.remove(r.root);objects.splice(objects.indexOf(r),1);}
     world.map=new Map(data.world.blocks.map(([key,type])=>[key,resolveBlock(type)]));world.size=data.world.size||18;world.seed=data.world.seed||42;world.rebuild();
-    for(const k of Object.keys(light))if(k in(data.light||{}))light[k]=data.light[k];updateLight();syncLightUI();
+    for(const k of Object.keys(light))if(k in(data.light||{}))light[k]=data.light[k];
+    // Studio settings + groups (v4): defaults keep v1–v3 projects untouched.
+    const savedSettings=data.settings&&typeof data.settings==='object'?data.settings:{};
+    studioSettings.material={texture:typeof savedSettings.material?.texture==='string'?savedSettings.material.texture:'',smoothness:Number.isFinite(savedSettings.material?.smoothness)?savedSettings.material.smoothness:null,shininess:Number.isFinite(savedSettings.material?.shininess)?savedSettings.material.shininess:null};
+    studioSettings.sky={enabled:!!savedSettings.sky?.enabled,color:/^#[\da-fA-F]{6}$/.test(savedSettings.sky?.color||'')?savedSettings.sky.color:'#c5d6d3'};
+    groups=Array.isArray(data.groups)?data.groups.filter(g=>g&&typeof g.id==='string'&&Array.isArray(g.members)).map(g=>({id:g.id,name:String(g.name||'Group').slice(0,60),members:g.members.filter(m=>typeof m==='string').slice(0,1000),expanded:false})):[];
     // Restore custom visuals: clear this session's overrides, then re-apply the project's.
     for(const id of [...customBlockTex.keys()])clearBlockTexture(id);
     const ct=data.customTextures&&typeof data.customTextures==='object'?data.customTextures:{};
@@ -2143,9 +2297,341 @@ async function main(){
     timeline.duration=clamp(+data.timeline?.duration||8,2,MAX_DURATION);timeline.time=clamp(+data.timeline?.time||0,0,timeline.duration);timeline.loop=!!data.timeline?.loop;timeline.cameraEnabled=data.timeline?.cameraEnabled!==false;
     timeline.fps=clamp(Math.round(+data.timeline?.fps||24),1,120);timeline.interpolation=data.timeline?.interpolation||null;
     if(data.camera.view)setCamera({position:new THREE.Vector3().fromArray(data.camera.view.position),target:new THREE.Vector3().fromArray(data.camera.view.target),fov:data.camera.view.fov,quaternion:data.camera.view.quaternion?new THREE.Quaternion().fromArray(data.camera.view.quaternion):null});
+    syncGroupIds();purgeEmptyGroups();applyGlobalMaterialOverrides(objects,studioSettings,{textures,imageAssets});updateLight();syncSettingsUI();
     $('#preview-audio').checked=!!data.audio?.preview;$('#record-audio').checked=data.audio?.includeVideo!==false;syncAudioUI();
     history.length=0;future.length=0;viewOverride=false;setSceneName(data.sceneName);selectObject(newObjects.find(r=>r.character)||newObjects[0]||null);updatePath();refreshAll();syncFov();cameraWorkspace.restore(data.editor);switchCameraMode(data.editor?.cameraMode);Object.assign(timelineView,{pixelsPerSecond:null,autoScroll:true},data.editor?.timeline);if(data.editor?.timelineUI&&Number.isFinite(data.editor.timelineUI.height)){timelineUI.height=Math.max(0,Math.round(data.editor.timelineUI.height));timelineUI.collapsed=!!data.editor.timelineUI.collapsed;applyTimelinePanel(false);}$('#timeline-auto-scroll').checked=timelineView.autoScroll!==false;state.autoKey=!!data.editor?.autoKey;state.onion=data.editor?.onion!==false;$('#auto-key').classList.toggle('active',state.autoKey);$('#onion-skin').checked=state.onion;const chosen=newObjects[data.editor?.selection];if(chosen)selectObject(chosen,data.editor?.scope||'root',data.editor?.joint||'head');if(chosen?.character&&Array.isArray(data.editor?.parts))state.parts=data.editor.parts.filter(p=>JOINTS[p]);refreshTimeline();$('#timeline-scroll').scrollLeft=data.editor?.timeline?.scrollLeft||0;markSaved('Project loaded');toast('Project opened. Continue editing or save a new copy.');
   }
+  // ── Object material, light, appearance and group controls (v4.4) ──────────
+  let materialEditBefore=null;
+  const firstStandardMaterial=root=>{let found=null;root?.traverse(o=>{if(found||!o.isMesh)return;for(const m of (Array.isArray(o.material)?o.material:[o.material]))if(m?.isMeshStandardMaterial){found=m;break;}});return found;};
+  function materialSpecOf(r){
+    const spec={...(r.options?.material||{})},m=firstStandardMaterial(r.root);
+    const value=(k,fallback)=>spec[k]!==undefined?spec[k]:fallback;
+    return {spec,m,
+      opacity:value('opacity',m?.opacity??1),
+      smooth:spec.roughness!=null?1-spec.roughness:(m?1-(m.roughness??1):0),
+      shiny:value('specularIntensity',m?.specularIntensity??1),
+      glowOn:spec.emissive!=null||(m?.emissive?.getHex()||0)!==0,
+      glowColor:spec.emissive||'#'+(m?.emissive?.getHexString()||'000000'),
+      glowPower:value('emissiveIntensity',m?.emissiveIntensity??1),
+      texture:spec.texture||'',
+      wireframe:!!value('wireframe',m?.wireframe)};
+  }
+  function liveMaterialEdit(r,next){
+    const clean=normalizeMaterialSpec(next);
+    delete r.options.material;
+    if(Object.keys(clean).length)r.options.material=clean;
+    applySpecToRoot(r.root,clean,{textures,imageAssets});markDirty();
+  }
+  function beginMaterialEdit(){const r=selected;if(r&&!materialEditBefore)materialEditBefore=clone(r.options?.material||null);}
+  function commitMaterialEdit(r,label){
+    const after=clone(r.options?.material||null),before=materialEditBefore;materialEditBefore=null;
+    if(JSON.stringify(before)===JSON.stringify(after))return;
+    const restore=spec=>{delete r.options.material;if(spec&&specHasContent(spec)){r.options.material=clone(spec);applySpecToRoot(r.root,spec,{textures,imageAssets});}else restoreOriginalMaterials(r.root);};
+    pushHistory(label,()=>restore(before),()=>restore(after));
+    applyGlobalMaterialOverrides(objects,studioSettings,{textures,imageAssets});
+    refreshInspector();
+  }
+  function syncMaterialControls(){
+    const r=selected,section=$('#material-controls');if(!section)return;
+    section.hidden=!r||state.multi.length>1;
+    if(!r)return;
+    const s=materialSpecOf(r);
+    $('#mat-opacity').value=s.opacity;$('#mat-opacity-value').textContent=Math.round(s.opacity*100)+'%';
+    $('#mat-glow').checked=s.glowOn;$('#mat-glow-controls').hidden=!s.glowOn;
+    $('#mat-glow-color').value=/^#[\da-f]{6}$/.test(s.glowColor)?s.glowColor:'#ffffff';
+    $('#mat-glow-power').value=s.glowPower;$('#mat-glow-power-value').textContent=(+s.glowPower).toFixed(1);
+    $('#mat-smoothness').value=s.smooth;$('#mat-smoothness-value').textContent=Math.round(s.smooth*100)+'%';
+    $('#mat-shininess').value=s.shiny;$('#mat-shininess-value').textContent=Math.round(s.shiny*100)+'%';
+    $('#mat-texture').value=s.texture;$('#mat-texture').disabled=!!r.character;
+    $('#mat-wireframe').checked=s.wireframe;
+    $('#mat-note').textContent=r.character?'Bob keeps his skin texture — tint and armor live in Appearance. Meshes and props accept catalog texture names or image assets ("asset:id").':'Texture accepts a catalog texture name or an image asset ("asset:id"). Clear it to return to the original.';
+  }
+  function syncObjectLightUI(){
+    const r=selected,section=$('#light-controls');if(!section)return;
+    const has=!!r&&(!!r.lightRig||!!r.options?.light);
+    section.hidden=!has;
+    if(!has)return;
+    const c=r.options.light||{};
+    $('#light-enabled').checked=!!c.enabled;
+    $('#light-color').value=/^#[\da-f]{6}$/.test(c.color||'')?c.color:'#ffbd64';
+    $('#light-intensity').value=c.intensity??8;$('#light-intensity-value').textContent=Math.round((c.intensity??8)*10)/10;
+    $('#light-range').value=c.range??9;$('#light-range-value').textContent=Math.round(c.range??9);
+    $('#light-flicker').value=c.flicker??0;$('#light-flicker-value').textContent=Math.round((c.flicker??0)*100)+'%';
+    $('#light-spot-controls').hidden=c.kind!=='spot';
+    $('#light-angle').value=c.angle??38;$('#light-angle-value').textContent=Math.round(c.angle??38)+'°';
+    $('#light-soft').value=c.soft??.35;$('#light-soft-value').textContent=Math.round((c.soft??.35)*100)+'%';
+    $('#light-note').textContent=!r.lightRig?(r.type==='particles'?'Dynamic particle lights are capped at '+MAX_EMITTER_LIGHTS+' — this emitter stays unlit so the scene stays fast.':''):'Light guides hide themselves in playback and exported video.';
+  }
+  function syncGroupUI(){
+    const multi=state.multi.length>1,r=selected,g=groupOf(r);
+    const show=multi||!!g;
+    $('#group-actions').hidden=!show;
+    if(!show)return;
+    $('#group-create').hidden=!multi;
+    $('#group-ungroup').hidden=!g&&!state.multi.some(x=>x.groupId);
+    $('#group-rename').hidden=!g;$('#group-select-members').hidden=!g;
+    $('#group-note').textContent=multi?(state.multi.length+' objects selected · Group makes this a persistent named group in the Outliner; every member keeps its identity, materials and animation.'):('Grouped · the group transforms as one unit and every member keeps its own animation track. Ungroup separates them again.');
+  }
+  function lightEdit(r,cfg,label){
+    if(!r?.lightRig)return;
+    const before=clone(r.options.light);
+    applyRecordLight(r,cfg);
+    pushHistory(label,()=>applyRecordLight(r,before),()=>applyRecordLight(r,cfg));
+    refreshInspector();markDirty();
+  }
+  for(const[id,key,fmt]of [['light-color','color',null],['light-intensity','intensity',v=>Math.round(v*10)/10],['light-range','range',v=>Math.round(v)],['light-flicker','flicker',v=>Math.round(v*100)+'%'],['light-angle','angle',v=>Math.round(v)+'°'],['light-soft','soft',v=>Math.round(v*100)+'%']]){
+    const el=$('#'+id);if(!el)continue;
+    // Color stays a string; every other field is numeric.
+    const read=()=>key==='color'?el.value.trim():+el.value;
+    el.addEventListener('input',()=>{const r=selected;if(!r?.lightRig)return;const c={...r.options.light,[key]:read()};applyRecordLight(r,c);fmt&&($('#'+id+'-value').textContent=fmt(+el.value));});
+    el.addEventListener('change',()=>{const r=selected;if(!r?.lightRig)return;lightEdit(r,{...r.options.light,[key]:read()},'light setting');});
+  }
+  $('#light-enabled').onchange=e=>{const r=selected;if(!r?.lightRig)return;lightEdit(r,{...r.options.light,enabled:e.target.checked},'light toggle');};
+  // Material sliders: live preview while dragging, one undo entry per gesture.
+  for(const[id,build]of [['mat-opacity',v=>({opacity:v})],['mat-glow-power',v=>({emissiveIntensity:v})],['mat-smoothness',v=>({roughness:1-clamp(v,0,1)})],['mat-shininess',v=>({specularIntensity:v})]]){
+    const el=$('#'+id);if(!el)continue;
+    el.addEventListener('pointerdown',beginMaterialEdit);el.addEventListener('focus',beginMaterialEdit);
+    el.addEventListener('input',()=>{const r=selected;if(!r)return;
+      const s=materialSpecOf(r);const next={...s.spec,...build(+el.value)};
+      if(id==='mat-opacity')$('#mat-opacity-value').textContent=Math.round(+el.value*100)+'%';
+      if(id==='mat-glow-power')$('#mat-glow-power-value').textContent=(+el.value).toFixed(1);
+      if(id==='mat-smoothness')$('#mat-smoothness-value').textContent=Math.round(+el.value*100)+'%';
+      if(id==='mat-shininess')$('#mat-shininess-value').textContent=Math.round(+el.value*100)+'%';
+      liveMaterialEdit(r,next);});
+    el.addEventListener('change',()=>{const r=selected;if(!r)return;commitMaterialEdit(r,id==='mat-smoothness'?'set smoothness':id==='mat-shininess'?'set shininess':id==='mat-opacity'?'set opacity':'glow strength');});
+  }
+  $('#mat-glow-color').addEventListener('input',()=>{const r=selected;if(!r)return;beginMaterialEdit();const s=materialSpecOf(r);liveMaterialEdit(r,{...s.spec,emissive:$('#mat-glow-color').value,emissiveIntensity:s.glowPower||1});});
+  $('#mat-glow-color').addEventListener('change',()=>{const r=selected;if(!r)return;commitMaterialEdit(r,'glow color');});
+  $('#mat-glow').onchange=e=>{const r=selected;if(!r)return;beginMaterialEdit();const s=materialSpecOf(r);
+    if(e.target.checked)liveMaterialEdit(r,{...s.spec,emissive:s.glowOn?s.glowColor:'#ffffff',emissiveIntensity:s.glowPower||1});
+    else{const spec={...s.spec};delete spec.emissive;delete spec.emissiveIntensity;liveMaterialEdit(r,spec);}
+    commitMaterialEdit(r,e.target.checked?'enable glow':'disable glow');};
+  $('#mat-texture').addEventListener('change',e=>{const r=selected;if(!r)return;beginMaterialEdit();const s=materialSpecOf(r);const v=e.target.value.trim();const spec={...s.spec};if(v)spec.texture=v;else delete spec.texture;liveMaterialEdit(r,spec);commitMaterialEdit(r,v?'set texture':'reset texture');
+    if(v&&resolveSpecTexture({texture:v},textures,imageAssets).texture===null)toast('Texture "'+v+'" was not found — the object keeps its previous texture.');});
+  $('#mat-wireframe').onchange=e=>{const r=selected;if(!r)return;beginMaterialEdit();const s=materialSpecOf(r);liveMaterialEdit(r,{...s.spec,wireframe:e.target.checked});commitMaterialEdit(r,'wireframe');};
+  $('#material-reset').onclick=()=>{const r=selected;if(!r)return;
+    const before=clone(r.options?.material||null),had=!!before;
+    delete r.options.material;restoreOriginalMaterials(r.root);
+    pushHistory('reset material',()=>{if(had){r.options.material=before;applySpecToRoot(r.root,before,{textures,imageAssets});}},{});
+    applyGlobalMaterialOverrides(objects,studioSettings,{textures,imageAssets});refreshInspector();toast('Material reset to its original appearance.');};
+  { // texture suggestions for per-object material editing
+    const dl=$('#mat-texture-list');
+    for(const n of Object.keys(textures).slice(0,1200)){const o=document.createElement('option');o.value=n;dl.append(o);}
+    for(const a of imageAssets){const o=document.createElement('option');o.value='asset:'+a.id;o.textContent=a.name+' (image asset)';dl.append(o);}
+  }
+  $('#edit-mesh').onclick=()=>{
+    const r=selected;if(r?.type!=='mesh')return;
+    const parts=extractMeshParts(r.root);
+    if(!parts.length){toast('This mesh uses geometry the workshop cannot round-trip (custom faces). Rebuild it or import its parts as primitives.');return;}
+    // Opened from a saved asset: the workshop offers "Update asset" (overwrite)
+    // and "Save as asset" (keep both) — the choice is the user's.
+    openMeshEditor({parts,name:r.options?.meshAssetName||r.name,assetId:r.options?.meshAsset||null});
+    toast('Editing the saved mesh — Update asset overwrites it, Save as asset keeps both versions.');
+  };
+  $('#group-create').onclick=createGroupFromSelection;
+  $('#group-ungroup').onclick=ungroupSelection;
+  $('#group-rename').onclick=()=>{const g=groupOf(selected);if(g){const n=prompt('Rename group:',g.name);if(n)renameGroup(g,n);}};
+  $('#group-select-members').onclick=()=>{const g=groupOf(selected);if(g)selectGroupMembers(g);};
+  $('#multi-clear').onclick=()=>{clearMulti();toast('Selection cleared.');};
+  // Character appearance: tint select + customize dialog entry point
+  {
+    const sel=$('#bob-tint');sel.replaceChildren();
+    for(const[id,t]of Object.entries(SKIN_TINTS)){const o=document.createElement('option');o.value=id;o.textContent=t.label;sel.append(o);}
+    sel.onchange=()=>{
+      const r=selected;if(!r?.character)return;
+      const before=clone(r.options.appearance||null);
+      const app=sel.value==='default'?undefined:{tint:sel.value};
+      if(app){r.options.appearance=app;applyAppearance(r.character,app);}else{delete r.options.appearance;applyAppearance(r.character,null);}
+      const after=clone(r.options.appearance||null);
+      const restore=appearance=>{if(appearance){r.options.appearance=clone(appearance);applyAppearance(r.character,appearance);}else{delete r.options.appearance;applyAppearance(r.character,null);}};
+      pushHistory('skin tint',()=>restore(before),()=>restore(after));
+      refreshInspector();markDirty();
+    };
+  }
+
+  // ── Studio settings dialog (modular) ─────────────────────────────────────
+  function commitSettings(before,label){
+    const after=clone(studioSettings);
+    const applySet=s=>{Object.assign(studioSettings.material,clone(s.material));Object.assign(studioSettings.sky,clone(s.sky));
+      applyGlobalMaterialOverrides(objects,studioSettings,{textures,imageAssets});updateLight();syncSettingsUI();};
+    pushHistory(label,()=>applySet(before),()=>applySet(after));
+    applySet(after);markDirty();
+  }
+  function syncSettingsUI(){
+    const m=studioSettings.material,sky=studioSettings.sky;
+    const on=$('#settings-texture-on');if(!on)return;
+    on.checked=!!m.texture;$('#settings-texture').disabled=!m.texture;$('#settings-texture').value=m.texture||'';
+    $('#settings-smoothness-on').checked=m.smoothness!=null;$('#settings-smoothness').disabled=m.smoothness==null;
+    $('#settings-smoothness').value=m.smoothness??.5;$('#settings-smoothness-value').textContent=Math.round((m.smoothness??.5)*100)+'%';
+    $('#settings-shininess-on').checked=m.shininess!=null;$('#settings-shininess').disabled=m.shininess==null;
+    $('#settings-shininess').value=m.shininess??1;$('#settings-shininess-value').textContent=Math.round((m.shininess??1)*100)+'%';
+    $('#settings-sky-enabled').checked=sky.enabled;$('#settings-sky-color').disabled=!sky.enabled;$('#settings-sky-color').value=sky.color;$('#settings-sky-reset').disabled=!sky.enabled;
+    const sum=globalOverrideSummary(objects,studioSettings);
+    const active=m.texture||m.smoothness!=null||m.shininess!=null;
+    $('#settings-material-note').textContent=active?('Overrides active for '+sum.eligible+' eligible object'+(sum.eligible===1?'':'s')+'. '+sum.excluded+' keep their own look'+(sum.excludedTypes.length?' ('+sum.excludedTypes.join(', ')+')':'')+' — disabling an override restores every original.'):'No overrides active — every object uses its own material settings.';
+  }
+  $('#open-settings').onclick=()=>{setPlaying(false);syncSettingsUI();$('#settings-dialog').showModal();};
+  $('#settings-texture-on').onchange=e=>{const before=clone(studioSettings);
+    studioSettings.material.texture=e.target.checked?($('#settings-texture').value.trim()||'grass'):'';
+    commitSettings(before,'global texture override');};
+  $('#settings-texture').addEventListener('change',e=>{if(!studioSettings.material.texture)return;const before=clone(studioSettings);
+    studioSettings.material.texture=e.target.value.trim()||'grass';commitSettings(before,'global texture override');});
+  $('#settings-smoothness-on').onchange=e=>{const before=clone(studioSettings);
+    studioSettings.material.smoothness=e.target.checked?(+$('#settings-smoothness').value||.5):null;commitSettings(before,'global smoothness override');};
+  $('#settings-smoothness').addEventListener('input',e=>{$('#settings-smoothness-value').textContent=Math.round(e.target.value*100)+'%';if(studioSettings.material.smoothness!=null){studioSettings.material.smoothness=+e.target.value;applyGlobalMaterialOverrides(objects,studioSettings,{textures,imageAssets});}});
+  $('#settings-smoothness').addEventListener('change',()=>{if(studioSettings.material.smoothness!=null)commitSettings(clone(studioSettings),'global smoothness override');});
+  $('#settings-shininess-on').onchange=e=>{const before=clone(studioSettings);
+    studioSettings.material.shininess=e.target.checked?(+$('#settings-shininess').value||1):null;commitSettings(before,'global shininess override');};
+  $('#settings-shininess').addEventListener('input',e=>{$('#settings-shininess-value').textContent=Math.round(e.target.value*100)+'%';if(studioSettings.material.shininess!=null){studioSettings.material.shininess=+e.target.value;applyGlobalMaterialOverrides(objects,studioSettings,{textures,imageAssets});}});
+  $('#settings-shininess').addEventListener('change',()=>{if(studioSettings.material.shininess!=null)commitSettings(clone(studioSettings),'global shininess override');});
+  $('#settings-material-reset').onclick=()=>{const before=clone(studioSettings);
+    studioSettings.material={texture:'',smoothness:null,shininess:null};commitSettings(before,'reset global material overrides');toast('Global material overrides cleared — original materials restored.');};
+  $('#settings-sky-enabled').onchange=e=>{const before=clone(studioSettings);
+    studioSettings.sky.enabled=e.target.checked;commitSettings(before,'custom sky color');
+    toast(e.target.checked?'Custom sky color enabled — it also drives fog and water reflections.':'Custom sky disabled — the Light tab sky color is back.');};
+  $('#settings-sky-color').addEventListener('input',e=>{if(!studioSettings.sky.enabled)return;studioSettings.sky.color=e.target.value;updateLight();});
+  $('#settings-sky-color').addEventListener('change',()=>{if(studioSettings.sky.enabled)commitSettings(clone(studioSettings),'sky color');});
+  $('#settings-sky-reset').onclick=()=>{const before=clone(studioSettings);
+    studioSettings.sky={enabled:false,color:'#c5d6d3'};commitSettings(before,'reset sky');toast('Sky reset to the original default.');};
+  { // texture suggestions for the global override
+    const dl=$('#settings-texture-list');
+    for(const n of Object.keys(textures).slice(0,1200)){const o=document.createElement('option');o.value=n;dl.append(o);}
+  }
+
+  // ── Bob customization dialog ─────────────────────────────────────────────
+  let bobDialogMode='add',bobPendingSkin=null;
+  function bobArmorFromDialog(){const out={};for(const s of ARMOR_SLOTS){const v=$('#bob-armor-'+s)?.value;out[s]=v||null;}return out;}
+  function bobDialogAppearance(){const tint=$('#bob-tints button.active')?.dataset.tint;const app={};if(tint&&tint!=='default')app.tint=tint;
+    const armor=bobArmorFromDialog();if(ARMOR_SLOTS.some(s=>armor[s]))app.armor=armor;return app;}
+  function openBobDialog(mode){
+    bobDialogMode=mode;bobPendingSkin=null;
+    $('#bob-dialog-title').textContent=mode==='add'?'Customize a new Bob.':'Customize '+(selected?.name||'Bob')+'.';
+    $('#bob-apply').hidden=mode!=='add';$('#bob-default').hidden=mode!=='add';$('#bob-apply-selection').hidden=mode==='add';
+    const host=$('#bob-tints');host.replaceChildren();
+    for(const[id,t]of Object.entries(SKIN_TINTS)){
+      const b=document.createElement('button');b.dataset.tint=id;
+      b.innerHTML=`<i style="background:#${t.color.toString(16).padStart(6,'0')}"></i>${t.label}`;
+      b.classList.toggle('active',id==='default');
+      b.onclick=()=>{$$('#bob-tints button').forEach(x=>x.classList.toggle('active',x===b));updateBobSummary();};
+      host.append(b);
+    }
+    for(const s of ARMOR_SLOTS){const sel=$('#bob-armor-'+s);sel.replaceChildren();
+      const none=document.createElement('option');none.value='';none.textContent='None';sel.append(none);
+      for(const[id,set]of Object.entries(ARMOR_SETS)){const o=document.createElement('option');o.value=id;o.textContent=set.label;sel.append(o);}
+      sel.onchange=updateBobSummary;
+    }
+    $('#bob-skin-clear').hidden=true;
+    updateBobSummary();
+    $('#bob-dialog').showModal();
+  }
+  function updateBobSummary(){
+    const app=bobDialogAppearance();
+    const parts=[];
+    const tint=$('#bob-tints button.active')?.dataset.tint;
+    if(tint&&tint!=='default')parts.push(SKIN_TINTS[tint].label+' tint');
+    const armor=bobArmorFromDialog(),worn=ARMOR_SLOTS.filter(s=>armor[s]);
+    if(worn.length)parts.push(worn.map(s=>ARMOR_SETS[armor[s]].label+' '+s).join(', '));
+    if(bobPendingSkin)parts.push('custom skin PNG');
+    $('#bob-summary').textContent=parts.length?'This Bob will wear: '+parts.join(' · ')+'.':'No changes — Bob keeps his exact default look.';
+  }
+  $('#bob-skin-btn').onclick=()=>$('#bob-skin-file').click();
+  $('#bob-skin-file').onchange=async e=>{
+    const file=e.target.files[0];e.target.value='';if(!file)return;
+    try{
+      if(file.size>4e6)throw new Error('Use a PNG under 4 MB.');
+      const data=await readDataURL(file);
+      const img=await new THREE.TextureLoader().loadAsync(data);
+      if(img.image.width!==64||img.image.height!==64)throw new Error('Use a standard 64 × 64 character skin PNG.');
+      bobPendingSkin=data;$('#bob-skin-clear').hidden=false;updateBobSummary();
+    }catch(err){toast(err.message);}
+  };
+  $('#bob-skin-clear').onclick=()=>{bobPendingSkin=null;$('#bob-skin-clear').hidden=true;updateBobSummary();};
+  $('#bob-apply').onclick=()=>{
+    const n=objects.filter(o=>o.character).length+1;
+    const appearance=bobDialogAppearance(),skin=bobPendingSkin;
+    const r=addBob(spawnPosition(),'Bob '+String(n).padStart(2,'0'),{appearance,skin});
+    added(r);$('#bob-dialog').close();touchClosePanels();showInspector('object');
+    toast(r.name+' added'+((appearance.tint||Object.keys(appearance.armor||{}).length||skin)?' with a customized appearance':' with the default look')+'.');
+  };
+  $('#bob-default').onclick=()=>{
+    const n=objects.filter(o=>o.character).length+1;
+    const r=addBob(spawnPosition(),'Bob '+String(n).padStart(2,'0'),null);
+    added(r);$('#bob-dialog').close();touchClosePanels();showInspector('object');
+  };
+  $('#bob-apply-selection').onclick=()=>{
+    const r=selected;if(!r?.character){toast('Select a Bob first.');return;}
+    const appearance=bobDialogAppearance(),skin=bobPendingSkin;
+    const norm=normalizeAppearance({...appearance,skin:skin||undefined});
+    const before={app:clone(r.options.appearance||null),skin:r.character.skinData||null,map:r.character.material.map};
+    if(norm){r.options.appearance=norm;applyAppearance(r.character,norm);}
+    else{delete r.options.appearance;applyAppearance(r.character,null);}
+    const done=async()=>{
+      if(skin){const tex=pixelTexture(await new THREE.TextureLoader().loadAsync(skin));r.character.material.map=tex;r.character.skinData=skin;r.character.material.needsUpdate=true;}
+      const after={app:clone(r.options.appearance||null),skin:r.character.skinData||null};
+      pushHistory('customize '+(r.name||'Bob'),
+        ()=>{const b=before;if(b.app){r.options.appearance=b.app;applyAppearance(r.character,b.app);}else{delete r.options.appearance;applyAppearance(r.character,null);}wearArmor(r.character,b.skin?r.character.armor:null);r.character.material.map=b.map;r.character.skinData=b.skin;r.character.material.needsUpdate=true;refreshInspector();},
+        ()=>{const a=after;if(a.app){r.options.appearance=a.app;applyAppearance(r.character,a.app);}else{delete r.options.appearance;applyAppearance(r.character,null);}r.character.material.map=null;r.character.skinData=a.skin;r.character.material.needsUpdate=true;refreshInspector();});
+      refreshInspector();markDirty();
+    };
+    Promise.resolve(done()).catch(err=>toast(err.message));
+    $('#bob-dialog').close();
+    toast((r.name||'Bob')+' updated. Every Bob keeps its own appearance.');
+  };
+  $('#customize-bob').onclick=()=>{if(selected?.character)openBobDialog('edit');};
+
+  // ── Mobs documentation dialog ────────────────────────────────────────────
+  function mobGlyph(){return 'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" rx="8" fill="#202a2d"/><text x="24" y="31" font-size="20" text-anchor="middle">📄</text></svg>');}
+  function lightIcon(kind){const c=kind==='spot'?'🔦':'💡';return 'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" rx="8" fill="#2c3a33"/><text x="24" y="33" font-size="24" text-anchor="middle">'+c+'</text></svg>');}
+  function showMobDetail(m){
+    $('#mob-detail-name').textContent=m.name;
+    $('#mob-detail-status').textContent='Status: no animatable rig available in any legitimate public source.';
+    $('#mob-detail-variations').textContent='Official variations: '+m.variations.join(', ')+'.';
+    $('#mob-detail-reason').textContent=m.reason;
+    $('#mob-dialog').showModal();
+  }
+
+  // ── Custom Mesh Editor (isolated workshop) ───────────────────────────────
+  let meshEditor=null;
+  let meshAssetsCache=[];
+  function loadMeshAssetsCache(force=false){
+    if(!force&&Date.now()-loadMeshAssetsCache.at<2000)return Promise.resolve();
+    loadMeshAssetsCache.at=Date.now();
+    return listMeshAssets().then(list=>{meshAssetsCache=list;}).catch(()=>{meshAssetsCache=[];});
+  }
+  function refreshMeshAssetsCache(){loadMeshAssetsCache(true).then(()=>{if(state.category==='meshes')refreshLibrary();});}
+  function openMeshEditor({parts=null,name='Custom mesh',assetId=null}={}){
+    if(recording){toast('Stop the video export before opening the workshop.');return;}
+    setPlaying(false);touchClosePanels();
+    $('#mesh-editor-dialog').showModal();
+    meshEditor=createMeshEditor({host:$('#mesh-editor-host'),textures,imageAssets,assetId,initialName:name,initialParts:parts,
+      onFinished(result){meshEditor?.dispose();meshEditor=null;$('#mesh-editor-dialog').close();finishMeshFromEditor(result);},
+      onCancelled(){meshEditor?.dispose();meshEditor=null;$('#mesh-editor-dialog').close();}});
+  }
+  function finishMeshFromEditor({name,parts,assetId}){
+    try{
+      const root=buildMeshParts(parts);root.name=name;
+      const r=register(root,'mesh',name,{options:{...(assetId?{meshAsset:assetId,meshAssetName:name}:{})}});
+      r.root.position.copy(spawnPosition());
+      added(r);showInspector('object');
+      loadMeshAssetsCache(true);
+      toast('"'+name+'" joined the scene as one selectable object ('+parts.length+' part'+(parts.length===1?'':'s')+').');
+    }catch(err){toast('Could not add the mesh: '+err.message);}
+  }
+  function addMeshAssetToScene(asset){
+    if(!asset?.parts?.length){toast('That mesh asset is empty.');return;}
+    try{
+      const root=buildMeshParts(structuredClone(asset.parts));root.name=asset.name;
+      const r=register(root,'mesh',asset.name,{options:{meshAsset:asset.id,meshAssetName:asset.name}});
+      r.root.position.copy(spawnPosition());
+      added(r);touchClosePanels();showInspector('object');
+      toast('Placed saved mesh "'+asset.name+'" as one object.');
+    }catch(err){toast('Could not build "'+asset.name+'": '+err.message);}
+  }
+  $('#open-mesh-editor').onclick=()=>openMeshEditor();
+  $('#new-custom-mesh').onclick=()=>openMeshEditor();
+  $('#mesh-editor-dialog').addEventListener('close',()=>{meshEditor?.dispose();meshEditor=null;});
+
   $('#save-project').onclick=()=>{try{if(loadingProject||importBusy)throw new Error('Wait for the project or model to finish loading before saving.');applyPendingEdits();const data=migrateProject(projectData());download(new Blob([JSON.stringify(data)],{type:'application/json'}),safeName(sceneName)+'.bloxd.json');markSaved('Project downloaded');toast('Project downloaded. Keep the JSON file to continue later.');}catch(e){toast('Could not save: '+e.message);}};
   $('#open-project').onclick=()=>$('#project-file').click();$('#project-file').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(projectDirty&&!confirm('Discard unsaved changes and load this project?'))return;if(file.size>40e6)throw new Error('Project is too large (40 MB limit).');await loadProject(JSON.parse(await file.text()));}catch(err){toast('Could not open project: '+err.message);}finally{e.target.value='';}};
 
@@ -2188,7 +2674,7 @@ async function main(){
 
   function cleanRender(){
     const visible=helpers.visible,markerStates=objects.filter(r=>r.character).map(r=>[r.character.markers,r.character.markers.visible]);
-    helpers.visible=false;markerStates.forEach(([m])=>m.visible=false);renderer.render(scene,camera);helpers.visible=visible;markerStates.forEach(([m,v])=>m.visible=v);
+    helpers.visible=false;markerStates.forEach(([m])=>m.visible=false);setLightVisualsHidden(true);renderer.render(scene,camera);helpers.visible=visible;markerStates.forEach(([m,v])=>m.visible=v);setLightVisualsHidden(false);
   }
   function captureStill(){
     try{cleanRender();canvas.toBlob(b=>{if(b){download(b,'Maple-clearing.png');toast('Clean PNG frame saved.');}},'image/png');$('#export-dialog').close();}catch(e){toast('Capture failed: '+e.message);}
@@ -2911,7 +3397,10 @@ async function main(){
       selectionBox.visible=!selected.character&&!timeline.playing;if(selectionBox.visible)selectionBox.setFromObject(selected.root);
     }else{ring.visible=selectionBox.visible=false;}
     if(cameraWorkspace.mode==='scene'){if(timeline.playing&&nav.active)updateNav(dt);if(cameraWorkspace.orbit.enabled&&!gizmo.dragging)cameraWorkspace.orbit.update();}
-    cameraWorkspace.update();renderer.render(scene,viewCamera());
+    cameraWorkspace.update();
+    updateLightsAtTime(timeline.playing?timeline.time:timeSinceStart);
+    setLightVisualsHidden(timeline.playing||!!recording||state.clean);
+    renderer.render(scene,viewCamera());
   }
   animate();
   $('#loader').classList.add('gone');setTimeout(()=>$('#loader').remove(),500);
@@ -2973,10 +3462,18 @@ async function main(){
     keys:{get selection(){return state.keySel;},set selection(v){state.keySel=v;refreshTimeline();},get clipboard(){return keyClipboard;},active:activeSelectionKeys,copy:copySelectedKeys,paste:pasteClipboardKeys,duplicate:duplicateSelectedKeys,remove:deleteSelectedKeys,selectAll:selectAllKeysInTrack,clear:clearKeySelection,ease:setSelectionEase},
     parts:{pick:pickPart,all:selectAllParts,get selected(){return selectedParts();},detach:setPartsDetached,toggleDetach:toggleDetachSelected,proxy:partProxy},
     multi:{get selected(){return state.multi.slice();},get proxy(){return multiProxy;},toggle:toggleMultiMember,clear:clearMulti,selectAll:selectAllSceneObjects,apply:()=>updateMultiMembers(),record:recordGroupChange},
+    groups:{get list(){return groups.map(g=>({...g}));},create:createGroupFromSelection,ungroup:ungroupSelection,rename:(g,name)=>renameGroup(groups.find(x=>x.id===g?.id)||g,name),select:(g)=>selectGroupMembers(groups.find(x=>x.id===g?.id)||g),members:groupMembers,of:groupOf},
+    settings:{get data(){return clone(studioSettings);},sync:syncSettingsUI,applyOverrides:()=>applyGlobalMaterialOverrides(objects,studioSettings,{textures,imageAssets})},
+    lights:{attach:attachManagedLight,apply:applyRecordLight,normalize:normalizeLightConfig,get emitterLights(){return emitterLightCount();},get presets(){return clone(LIGHT_PRESETS);}},
+    materials:{apply:(root,spec)=>applySpecToRoot(root,spec,{textures,imageAssets}),restore:restoreOriginalMaterials,normalize:normalizeMaterialSpec},
+    appearance:{apply:applyAppearance,normalize:normalizeAppearance,summary:appearanceSummary},
+    mobs:{get audit(){return MOB_AUDIT;}},
+    bob:{openDialog:openBobDialog,add:addBob},
+    meshEditor:{open:openMeshEditor,finish:finishMeshFromEditor,assets:()=>meshAssetsCache.slice(),refresh:refreshMeshAssetsCache,addAsset:addMeshAssetToScene,extract:extractMeshParts},
     fill:{state:state.fill,toggle:toggleFill,commit:commitFill,box:fillBox,resolvePlane,cancel:cancelFill,get drag(){return fillDrag;},preview:fillPreview}};
   const codeCatalog={blocks:Object.entries(blockDefs).filter(([id,d])=>d.available).map(([id,d])=>({id,label:d.label,root:d.root,solid:d.solid,surfaceHeight:d.surfaceHeight})),blockAliases:catalog.blockAliases,tools:toolNames.slice(),inventoryTools:catalog.itemOrder.filter(n=>itemDefs[n].available&&itemDefs[n].kind==='item'),sourceModels:catalog.sourceModels.map(m=>m.asset),lights:clone(LIGHTS),textures:Object.keys(assetData.textures||{}).slice(0,1200)};
   const codeBridge={catalog:codeCatalog,snapshot:captureAIScene,apply:applyAIPlan,
-    generateSceneCode:()=>generateSceneCode({snapshot:captureAIScene(),catalog:codeCatalog,cameraKeys:clone(camTrack.keys),cameraSmooth:camTrack.smooth,sunKeys:clone(light.keys||[]),timelineState:{duration:timeline.duration,fps:timeline.fps,loop:timeline.loop},editorVersion:'4.3.0'}),
+    generateSceneCode:()=>generateSceneCode({snapshot:captureAIScene(),catalog:codeCatalog,cameraKeys:clone(camTrack.keys),cameraSmooth:camTrack.smooth,sunKeys:clone(light.keys||[]),timelineState:{duration:timeline.duration,fps:timeline.fps,loop:timeline.loop},editorVersion:'4.4.0'}),
     sceneFileName:()=>safeName(sceneName).replace(/\s+/g,'-').toLowerCase()||'bloxd-scene',
     prepare:()=>{if(recording){toast('Stop recording first.');return false;}finishInputEdit();setPlaying(false);return true;}};
   window.STUDIO.code=initCodeStudio(codeBridge);

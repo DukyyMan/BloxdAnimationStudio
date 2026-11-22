@@ -1,13 +1,13 @@
 {
   "name": "bloxd-animation-studio",
-  "version": "4.3.0",
+  "version": "4.4.0",
   "private": true,
   "type": "module",
   "description": "An unofficial, local-first Bloxd-themed animation editor.",
   "scripts": {
     "start": "python3 -m http.server 8000 --bind 0.0.0.0",
     "build": "node build.mjs",
-    "test": "npm run test:code && node tests/studio.mjs && node tests/refinements.mjs && node tests/keyframe-fix.mjs && node tests/code-studio-browser.mjs && node tests/workspace-upgrade-browser.mjs && node tests/video-motion.mjs && node tests/catalog.mjs && npm run test:workflow && npm run test:v41 && npm run test:upgrade",
+    "test": "npm run test:code && node tests/studio.mjs && node tests/refinements.mjs && node tests/keyframe-fix.mjs && node tests/code-studio-browser.mjs && node tests/workspace-upgrade-browser.mjs && node tests/video-motion.mjs && node tests/catalog.mjs && npm run test:workflow && npm run test:v41 && npm run test:upgrade && npm run test:v5",
     "test:offline": "node tests/offline-v2.mjs",
     "test:video": "node tests/video-motion.mjs",
     "test:catalog": "node tests/catalog.mjs",
@@ -17,7 +17,8 @@
     "test:workflow": "node tests/workflow-browser.mjs",
     "test:v41": "esbuild tests/v41-unit.mjs --bundle --platform=node --format=esm --alias:three=./vendor/three.module.js --outfile=node_modules/.v41-unit.mjs --log-level=warning && node node_modules/.v41-unit.mjs && node tests/v41-features-browser.mjs",
     "test:upgrade": "esbuild tests/project-format.mjs --bundle --platform=node --format=esm --alias:three=./vendor/three.module.js --outfile=node_modules/.project-format-test.mjs --log-level=warning && node node_modules/.project-format-test.mjs && node tests/studio-upgrade-browser.mjs && node tests/timeline-density-browser.mjs",
-    "test:mobs": "python3 tools/audit-mobs.py"
+    "test:mobs": "python3 tools/audit-mobs.py",
+    "test:v5": "esbuild tests/features-v5-unit.mjs --bundle --platform=node --format=esm --alias:three=./vendor/three.module.js --outfile=node_modules/.features-v5-unit.mjs --log-level=warning && node node_modules/.features-v5-unit.mjs && node tests/features-v5-browser.mjs"
   },
   "devDependencies": {
     "acorn": "8.15.0",

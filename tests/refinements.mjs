@@ -15,7 +15,7 @@ async function reset(starter){await page.evaluate(d=>STUDIO.loadProject(d),start
 try{
  await boot(page);
  const starter=await get(()=>STUDIO.projectData());
- check('starter boots and stores versioned v3 project data',starter.version===3&&starter.objects.length===9);
+ check('starter boots and stores versioned v4 project data',starter.version===4&&starter.objects.length===9);
  check('Place and Remove are visible, separate buttons',await page.locator('#place-blocks').isVisible()&&await page.locator('#erase-blocks').isVisible());
  check('original pickaxe texture is visible in the inspector',(await page.locator('#texture-filename').textContent())==='diamond_pickaxe.png');
  const assets=await get(()=>{const B=STUDIO;const names=['Wood','Stone','Iron','Gold','Diamond'].flatMap(m=>['Pickaxe','Sword','Axe','Spade','Hoe'].map(t=>m+' '+t)).concat(['Moonstone Pickaxe','Moonstone Axe','Shears','Artisan Shears','Wood Bow','Diamond Spear','Diamond Dagger']);return names.map(name=>{let mesh;const item=B.makeTool(name);item.traverse(o=>{if(o.isMesh)mesh=o;});return{name,mapped:!!mesh.material.map,nearest:mesh.material.map.magFilter===B.THREE.NearestFilter,unlit:mesh.material.isMeshBasicMaterial&&!mesh.material.toneMapped,thin:mesh.geometry.userData.thickness<.5,pixels:mesh.geometry.userData.opaquePixels,file:mesh.userData.toolTexture};});});
