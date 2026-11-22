@@ -35,7 +35,7 @@ try{
  check('pausing updates the inspector to the actual sampled transform',await get(()=>Math.abs(+document.querySelector('#rot-y').value-STUDIO.selected.root.rotation.y*180/Math.PI)<.051));
  await page.locator('#play').click();await angle('y',22);
  check('typing a transform during playback pauses without overwriting the typed value',await get(()=>!STUDIO.timeline.playing&&Math.abs(STUDIO.selected.root.rotation.y-22*Math.PI/180)<1e-6));await page.locator('#revert-edit').click();
- await reset(starter);await page.locator('[data-library="characters"]').click();await page.locator('.character-card').click();await time(2);await page.locator('#whole-player').click();await angle('y',120);await apply();await time(1);
+ await reset(starter);await page.locator('[data-library="characters"]').click();await page.locator('.character-card').click();await page.locator('#bob-default').click();await time(2);await page.locator('#whole-player').click();await angle('y',120);await apply();await time(1);
  check('new whole-player transforms get the same automatic starting key',await get(()=>STUDIO.selected.character.keys.length===2&&Math.abs(STUDIO.selected.root.rotation.y-Math.PI/3)<1e-6));
  await time(0);await page.locator('#joint-select').selectOption('head');await angle('y',30);await time(3);
  check('pending head edit follows the chosen time without freezing animated root channels',await get(()=>Math.abs(STUDIO.selected.character.displayPose.head[1]-30)<1e-6&&Math.abs(STUDIO.selected.root.rotation.y-2*Math.PI/3)<1e-6));await apply();await time(2.5);

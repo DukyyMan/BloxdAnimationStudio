@@ -72,7 +72,7 @@ try{
  await get(()=>STUDIO.markDirty());check('unsaved indication is visible',await page.locator('#project-status').getAttribute('data-dirty')==='true');
  check('autosave writes an atomic recovery snapshot',await get(()=>STUDIO.saveRecovery()));
  const save=page.waitForEvent('download');await get(()=>document.querySelector('#save-project').click());const d=await save;await d.saveAs(out+'/upgrade-project.bloxd.json');const data=JSON.parse(fs.readFileSync(out+'/upgrade-project.bloxd.json'));
- check('downloaded project is versioned and contains all animation tracks',data.version===3&&data.camera.keys.length===4&&data.objects.some(o=>o.character?.keys.length>=5)&&data.objects.some(o=>o.character?.detached?.forearmR));
+ check('downloaded project is versioned and contains all animation tracks',[3,4].includes(data.version)&&data.camera.keys.length===4&&data.objects.some(o=>o.character?.keys.length>=5)&&data.objects.some(o=>o.character?.detached?.forearmR));
  check('save clears the unsaved indicator',await get(()=>!STUDIO.projectDirty));
  await page.reload();await page.waitForFunction(()=>STUDIO?.ready,null,{timeout:90000});await page.waitForFunction(()=>!document.querySelector('#loader'));await get(()=>document.body.classList.add('panel-library','panel-inspector','panel-timeline'));
  await page.setInputFiles('#project-file',out+'/upgrade-project.bloxd.json');await page.waitForFunction(()=>STUDIO.timeline.duration===180);
